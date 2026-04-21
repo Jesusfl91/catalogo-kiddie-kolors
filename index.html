@@ -159,8 +159,23 @@ export default function App() \{\
   const [pedidos, setPedidos] = useState([]); // NUEVO ESTADO PARA PEDIDOS\
   const [activeCategory, setActiveCategory] = useState('all');\
 \
-  // Inicializaci\'f3n de Autenticaci\'f3n\
+  // Inicializaci\'f3n de Autenticaci\'f3n y Reparaci\'f3n de Vercel\
   useEffect(() => \{\
+    // --- PARCHE SEGURO PARA VERCEL (Inyectar Tailwind y Viewport M\'f3vil) ---\
+    if (!document.getElementById('tailwind-cdn')) \{\
+      const script = document.createElement('script');\
+      script.id = 'tailwind-cdn';\
+      script.src = 'https://cdn.tailwindcss.com';\
+      document.head.appendChild(script);\
+    \}\
+    if (!document.querySelector('meta[name="viewport"]')) \{\
+      const meta = document.createElement('meta');\
+      meta.name = 'viewport';\
+      meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';\
+      document.head.appendChild(meta);\
+    \}\
+    // ------------------------------------------------------------------------\
+\
     const initAuth = async () => \{\
       try \{\
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) \{\
