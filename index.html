@@ -43,6 +43,9 @@
     <!-- Traductor Babel para poder usar React dentro de HTML -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- NUEVO: Generador de Imágenes para descargar el Ticket como PNG -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
     <!-- Import Maps: Le dice al navegador de dónde sacar las librerías -->
     <script type="importmap">
       {
@@ -194,6 +197,7 @@
         const [lastOrderId, setLastOrderId] = useState(() => localStorage.getItem('kiddie_last_order'));
         const [lastOrder, setLastOrder] = useState(null);
         const [showLastOrder, setShowLastOrder] = useState(false);
+        const [isDownloadingTracking, setIsDownloadingTracking] = useState(false); // ESTADO DE DESCARGA
 
         // SE AGREGA EL CAMPO "admin_email" y "datos_pago" A LA CONFIGURACIÓN INICIAL
         const [config, setConfig] = useState({
@@ -357,6 +361,25 @@
           setIsAdminAuth(false); sessionStorage.removeItem('adminAuth'); setView('catalog');
         };
 
+        // NUEVA FUNCIÓN: Descargar el Ticket de Seguimiento como Imagen
+        const downloadTrackingTicket = async () => {
+          setIsDownloadingTracking(true);
+          try {
+            const element = document.getElementById('ticket-tracking');
+            const canvas = await window.html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `Seguimiento_KiddieKolors_${lastOrder.id.slice(-6).toUpperCase()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            // Mostrar texto de éxito temporal
+            setTimeout(() => setIsDownloadingTracking(false), 2000);
+          } catch (e) {
+            console.error("Error al generar la imagen", e);
+            setIsDownloadingTracking(false);
+          }
+        };
+
         // PANTALLA DE CARGA ANIMADA Y PROTEGIDA
         if (loading || !isConfigLoaded) return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa]">
@@ -468,7 +491,8 @@
                     <button onClick={() => setShowLastOrder(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} /></button>
                   </div>
                   
-                  <div className="flex-grow overflow-y-auto p-6 printable-section hide-scrollbar bg-white">
+                  {/* SE AÑADE EL ID "ticket-tracking" PARA CAPTURAR LA IMAGEN */}
+                  <div id="ticket-tracking" className="flex-grow overflow-y-auto p-6 printable-section hide-scrollbar bg-white">
                     {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-12 object-contain mb-6 mx-auto" />}
                     <div className="text-center mb-6">
                       <h3 className="font-black text-2xl title-font uppercase mb-1">Tu Pedido</h3>
@@ -512,7 +536,10 @@
                   </div>
 
                   <div className="p-4 bg-white border-t border-gray-100 no-print flex gap-3">
-                    <Button onClick={() => window.print()} className="flex-1 text-xs" variant="secondary"><Download size={16} className="mr-2"/> Guardar PDF</Button>
+                    <Button onClick={downloadTrackingTicket} className={`flex-1 text-xs transition-colors ${isDownloadingTracking ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100' : ''}`} variant="secondary" disabled={isDownloadingTracking}>
+                      {isDownloadingTracking ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>} 
+                      {isDownloadingTracking ? '¡Guardado!' : 'Guardar Imagen'}
+                    </Button>
                     <Button onClick={() => {
                       const url = `https://api.whatsapp.com/send?phone=${config.whatsapp_numero.replace(/\D/g, '')}&text=${encodeURIComponent(`Hola, soy ${lastOrder.cliente?.firstName}, escribo para consultar el estado de mi pedido #${lastOrder.id.slice(-6).toUpperCase()}`)}`;
                       window.open(url, '_blank');
@@ -652,10 +679,31 @@
         const [waLink, setWaLink] = useState('');
         const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', country: '', city: '', address: '', note: '' });
         
-        // NUEVO ESTADO: Tomar una "foto" del carrito para la pantalla final
+        // NUEVO ESTADO: Tomar una "foto" del carrito para la pantalla final y descargar imagen
         const [finalSnapshot, setFinalSnapshot] = useState({ items: [], total: 0 });
+        const [savedOrderId, setSavedOrderId] = useState('');
+        const [isDownloadingTicket, setIsDownloadingTicket] = useState(false);
 
         const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+        // NUEVA FUNCIÓN: Descargar el Ticket Recién Creado
+        const downloadCheckoutTicket = async () => {
+          setIsDownloadingTicket(true);
+          try {
+            const element = document.getElementById('ticket-checkout');
+            const canvas = await window.html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `Pedido_KiddieKolors_${savedOrderId}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            // Mostrar éxito
+            setTimeout(() => setIsDownloadingTicket(false), 2000);
+          } catch (e) {
+            console.error("Error al generar la imagen", e);
+            setIsDownloadingTicket(false);
+          }
+        };
 
         const handleCheckout = async (e) => {
           if (e) e.preventDefault();
@@ -688,6 +736,8 @@
           }
 
           const shortOrderId = orderIdFull.slice(-6).toUpperCase();
+          setSavedOrderId(shortOrderId); // Guardar ID para el nombre del archivo
+          
           let text = `*NUEVO PEDIDO B2B*\n*ID de Pedido:* #${shortOrderId}\n\n*Cliente:* ${form.firstName} ${form.lastName}\n*Tel/WA:* ${form.phone}\n*Email:* ${form.email}\n*Ubicación:* ${form.city}, ${form.country}\n*Dirección:* ${form.address}\n`;
           if (form.note) text += `*Notas:* ${form.note}\n`;
           text += `\n*🛍️ DETALLE DE PRODUCTOS:*\n`;
@@ -726,8 +776,8 @@
             <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
               <div className="w-full max-w-md bg-[#fafafa] h-full flex flex-col shadow-2xl animate-in slide-in-from-right-full duration-400 overflow-hidden">
                 
-                {/* ÁREA DEL TICKET DIGITAL */}
-                <div className="flex-grow overflow-y-auto p-6 md:p-8 printable-section bg-white hide-scrollbar">
+                {/* ÁREA DEL TICKET DIGITAL CON ID "ticket-checkout" */}
+                <div id="ticket-checkout" className="flex-grow overflow-y-auto p-6 md:p-8 printable-section bg-white hide-scrollbar">
                   <div className="text-center mb-8">
                     <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 no-print"><CheckCircle size={32} /></div>
                     {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-12 object-contain mb-4 mx-auto hidden print:block" />}
@@ -763,13 +813,16 @@
                   )}
                 </div>
 
-                {/* BOTONES DE ACCIÓN (Ocultos en el PDF) */}
+                {/* BOTONES DE ACCIÓN (Ocultos en la imagen) */}
                 <div className="bg-white p-6 border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-10 no-print space-y-3">
-                  <a href={waLink} target="_blank" rel="noreferrer" onClick={onClose} className="w-full py-3.5 text-sm tracking-widest shadow-lg rounded-xl font-black title-font text-white flex items-center justify-center gap-2 hover:opacity-90 transition-opacity" style={{ backgroundColor: '#25D366' }}>
+                  <a href={waLink} target="_blank" rel="noreferrer" className="w-full py-3.5 text-sm tracking-widest shadow-lg rounded-xl font-black title-font text-white flex items-center justify-center gap-2 hover:opacity-90 transition-opacity" style={{ backgroundColor: '#25D366' }}>
                     ENVIAR POR WHATSAPP
                   </a>
                   <div className="flex gap-3">
-                    <Button onClick={() => window.print()} className="flex-1 py-3 text-xs" variant="secondary"><Download size={16} className="mr-2"/> Guardar Ticket</Button>
+                    <Button onClick={downloadCheckoutTicket} className={`flex-1 py-3 text-xs transition-colors ${isDownloadingTicket ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100' : ''}`} variant="secondary" disabled={isDownloadingTicket}>
+                      {isDownloadingTicket ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>}
+                      {isDownloadingTicket ? '¡Guardado!' : 'Guardar Ticket'}
+                    </Button>
                     <Button onClick={onClose} className="flex-1 py-3 text-xs" variant="outlinePrimary" style={{ color: config.color_primario, borderColor: config.color_primario }}>Volver a la Tienda</Button>
                   </div>
                 </div>
