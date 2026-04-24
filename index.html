@@ -70,7 +70,7 @@
       import { 
         ShoppingCart, Search, Menu, X, Plus, Minus, Trash2, Edit, 
         Image as ImageIcon, Save, LogIn, ChevronRight, ChevronLeft, Check, Copy,
-        Download, Upload, FileJson, FileSpreadsheet, AlertTriangle, LogOut, ChevronDown, Package, Clock, CheckCircle
+        Download, Upload, FileJson, FileSpreadsheet, AlertTriangle, LogOut, ChevronDown, Package, Clock, CheckCircle, FileText, TrendingUp, Percent
       } from 'lucide-react';
       import { initializeApp } from 'firebase/app';
       import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
@@ -1181,6 +1181,11 @@
         const [isUploading, setIsUploading] = useState(false);
         const [productToDelete, setProductToDelete] = useState(null);
 
+        // NUEVOS ESTADOS PARA ACTUALIZACIÓN MASIVA DE PRECIOS
+        const [showPriceModal, setShowPriceModal] = useState(false);
+        const [priceConfig, setPriceConfig] = useState({ action: 'increase', percent: 0, onlyActive: true });
+        const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
+
         const handleSave = async () => {
           if (!formData.nombre || formData.precio_mayor <= 0) return showMsg('Datos inválidos', 'error');
           try {
@@ -1195,6 +1200,38 @@
           if(!productToDelete) return;
           try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'productos', productToDelete)); showMsg('Producto eliminado'); } 
           catch (e) { showMsg('Error al eliminar', 'error'); } finally { setProductToDelete(null); }
+        };
+
+        // NUEVA FUNCIÓN: ACTUALIZAR PRECIOS EN LOTE
+        const handleBatchPriceUpdate = async () => {
+          if (priceConfig.percent <= 0) return showMsg('El porcentaje debe ser mayor a 0', 'error');
+
+          setIsUpdatingPrices(true);
+          try {
+            let batchCount = 0; 
+            let batch = writeBatch(db);
+            const factor = priceConfig.action === 'increase' ? (1 + (priceConfig.percent / 100)) : (1 - (priceConfig.percent / 100));
+            const toUpdate = priceConfig.onlyActive ? products.filter(p => p.disponible) : products;
+
+            for (const p of toUpdate) {
+              const newPrice = Number((p.precio_mayor * factor).toFixed(2));
+              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'productos', p.id), { precio_mayor: newPrice });
+              batchCount++;
+              
+              // Evitar error de límite de 500 escrituras en Firebase
+              if (batchCount === 490) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
+            }
+            if (batchCount > 0) await batch.commit();
+            
+            showMsg(`Se actualizaron los precios de ${toUpdate.length} productos exitosamente.`);
+            setShowPriceModal(false);
+            setPriceConfig({ action: 'increase', percent: 0, onlyActive: true });
+          } catch (e) {
+            showMsg('Error actualizando precios', 'error');
+            console.error(e);
+          } finally {
+            setIsUpdatingPrices(false);
+          }
         };
 
         if (editing) {
@@ -1268,9 +1305,57 @@
         return (
           <div className="animate-in fade-in">
             <ConfirmModal isOpen={!!productToDelete} title="¿Eliminar Producto?" message="Esta acción no se puede deshacer. El producto desaparecerá permanentemente." onConfirm={confirmAndDelete} onCancel={() => setProductToDelete(null)} confirmText="Sí, Eliminar" />
+            
+            {/* MODAL AJUSTE DE PRECIOS MASIVO */}
+            {showPriceModal && (
+              <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[110] px-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-black uppercase tracking-wide title-font flex items-center gap-2"><TrendingUp size={20} className="text-blue-500"/> Ajuste Masivo</h3>
+                    <button onClick={() => setShowPriceModal(false)} className="text-gray-400 hover:text-gray-900 transition-colors bg-gray-100 hover:bg-gray-200 p-2 rounded-full"><X size={20} /></button>
+                  </div>
+                  
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Acción</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setPriceConfig({...priceConfig, action: 'increase'})} className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${priceConfig.action === 'increase' ? 'bg-green-100 text-green-700 border-2 border-green-500' : 'bg-gray-50 text-gray-500 border-2 border-transparent hover:bg-gray-100'}`}>Aumentar (+)</button>
+                        <button onClick={() => setPriceConfig({...priceConfig, action: 'decrease'})} className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${priceConfig.action === 'decrease' ? 'bg-red-100 text-red-700 border-2 border-red-500' : 'bg-gray-50 text-gray-500 border-2 border-transparent hover:bg-gray-100'}`}>Reducir (-)</button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Porcentaje (%)</label>
+                      <div className="relative">
+                        <Percent size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input type="number" min="0" value={priceConfig.percent} onChange={e => setPriceConfig({...priceConfig, percent: Number(e.target.value)})} className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:outline-none transition-all focus:border-transparent text-sm font-black text-gray-800" />
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
+                      <input type="checkbox" id="onlyAct" checked={priceConfig.onlyActive} onChange={e=>setPriceConfig({...priceConfig, onlyActive: e.target.checked})} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                      <label htmlFor="onlyAct" className="font-bold text-sm text-gray-800 cursor-pointer">Afectar solo a productos activos</label>
+                    </div>
+                    
+                    <div className="text-[11px] text-gray-500 bg-blue-50 p-3 rounded-xl border border-blue-100 font-medium leading-relaxed">
+                      <strong className="text-blue-700 uppercase tracking-wider block mb-1">Cálculo de Ejemplo:</strong> 
+                      Si un producto cuesta <strong className="text-gray-900">$10.00</strong> y aplicas un {priceConfig.action === 'increase' ? 'aumento' : 'descuento'} del <strong className="text-gray-900">{priceConfig.percent || 0}%</strong>, pasará a costar <strong className="text-gray-900">${(10 * (priceConfig.action === 'increase' ? (1 + priceConfig.percent / 100) : (1 - priceConfig.percent / 100))).toFixed(2)}</strong>.
+                    </div>
+                  </div>
+
+                  <Button onClick={handleBatchPriceUpdate} className="w-full py-3.5" disabled={isUpdatingPrices || priceConfig.percent <= 0} style={{ backgroundColor: config.color_primario }}>
+                    {isUpdatingPrices ? 'PROCESANDO...' : 'APLICAR CAMBIOS AHORA'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
               <div><h3 className="text-2xl font-black uppercase title-font tracking-wide">Inventario</h3><p className="text-sm text-gray-500 font-medium">{products.length} productos registrados</p></div>
-              <Button onClick={() => { setFormData(defaultProduct); setEditing(true); }} className="py-2.5 px-5 text-sm" style={{ backgroundColor: config.color_primario }}><Plus size={16} className="mr-1"/> Crear Producto</Button>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="secondary" onClick={() => setShowPriceModal(true)} className="py-2.5 px-4 text-sm bg-gray-100 hover:bg-gray-200 border-none shadow-sm"><TrendingUp size={16} className="mr-2 text-blue-600 hidden sm:inline"/> Ajuste Masivo</Button>
+                <Button onClick={() => { setFormData(defaultProduct); setEditing(true); }} className="py-2.5 px-5 text-sm" style={{ backgroundColor: config.color_primario }}><Plus size={16} className="mr-1"/> Crear Producto</Button>
+              </div>
             </div>
 
             <div className="overflow-x-auto rounded-2xl border border-gray-100 shadow-sm">
@@ -1311,6 +1396,7 @@
       function AdminRespaldo({ config, categories, products, showMsg }) {
         const [isUploading, setIsUploading] = useState(false);
         const [pendingJSONFile, setPendingJSONFile] = useState(null); 
+        const [isPrintingCatalog, setIsPrintingCatalog] = useState(false); // NUEVO ESTADO PARA PDF
 
         const exportFullJSON = () => {
           const backupData = { type: 'b2b-catalog-full-backup', timestamp: new Date().toISOString(), config: config, categories: categories, products: products };
@@ -1403,6 +1489,16 @@
           reader.readAsText(file);
         };
 
+        // NUEVA FUNCIÓN: GENERAR VISTA DE PDF Y LLAMAR A GUARDAR
+        const printCatalog = () => {
+          setIsPrintingCatalog(true);
+          // Le damos medio segundo al navegador para que dibuje las imágenes antes de capturarlo
+          setTimeout(() => {
+            window.print();
+            setIsPrintingCatalog(false);
+          }, 500);
+        };
+
         return (
           <div className="animate-in fade-in">
             <ConfirmModal isOpen={!!pendingJSONFile} title="⚠️ ADVERTENCIA" message="Esta acción sobreescribirá la apariencia, categorías y productos actuales. ¿Estás seguro de querer restaurar esta copia?" onConfirm={executeImportFullJSON} onCancel={() => setPendingJSONFile(null)} confirmText="Sí, Restaurar" />
@@ -1424,17 +1520,55 @@
 
             <div className="w-full h-px bg-gray-100 my-8"></div>
 
-            <h4 className="font-black text-gray-800 uppercase tracking-widest text-xs mb-4">Gestión Masiva de Productos (Excel)</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex items-center gap-6 hover:border-green-300 transition-colors group cursor-pointer" onClick={exportToCSV}>
-                <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><FileSpreadsheet size={28} /></div>
-                <div><h4 className="font-black text-base title-font text-gray-800">Exportar a CSV</h4><p className="text-xs text-gray-500 mt-1">Baja solo tus productos para editarlos en Excel.</p></div>
+            <h4 className="font-black text-gray-800 uppercase tracking-widest text-xs mb-4">Catálogo Visual y Datos Masivos</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* NUEVA TARJETA: DESCARGAR CATÁLOGO PDF */}
+              <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-red-300 transition-colors group cursor-pointer text-center" onClick={printCatalog}>
+                <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><FileText size={28} /></div>
+                <div><h4 className="font-black text-base title-font text-gray-800">Catálogo PDF</h4><p className="text-xs text-gray-500 mt-1">Genera un PDF visual para clientes sin acceso a internet.</p></div>
               </div>
-              <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex items-center gap-6 hover:border-blue-300 transition-colors group">
+
+              <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-green-300 transition-colors group cursor-pointer text-center" onClick={exportToCSV}>
+                <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><FileSpreadsheet size={28} /></div>
+                <div><h4 className="font-black text-base title-font text-gray-800">Exportar a CSV</h4><p className="text-xs text-gray-500 mt-1">Baja solo tus productos para editarlos masivamente en Excel.</p></div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-blue-300 transition-colors group text-center">
                 <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><Upload size={28} /></div>
-                <div className="flex-grow"><h4 className="font-black text-base title-font text-gray-800">Importar CSV</h4><p className="text-xs text-gray-500 mt-1 mb-2">Carga cientos de productos a la vez.</p><input type="file" id="import-csv" accept=".csv" className="hidden" onChange={importCSV} disabled={isUploading}/><label htmlFor="import-csv" className={`text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors ${isUploading ? 'opacity-50' : ''}`}>SELECCIONAR CSV</label></div>
+                <div className="flex-grow w-full"><h4 className="font-black text-base title-font text-gray-800">Importar CSV</h4><p className="text-xs text-gray-500 mt-1 mb-3">Carga cientos de productos a la vez.</p><input type="file" id="import-csv" accept=".csv" className="hidden" onChange={importCSV} disabled={isUploading}/><label htmlFor="import-csv" className={`w-full block text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors ${isUploading ? 'opacity-50' : ''}`}>SELECCIONAR CSV</label></div>
               </div>
             </div>
+
+            {/* DOM OCULTO: PLANTILLA DE DISEÑO PARA EL PDF DEL CATÁLOGO COMPLETO */}
+            {isPrintingCatalog && (
+              <div className="printable-section bg-white text-black p-8 min-h-screen z-[9999]">
+                <div className="text-center mb-10 border-b-2 border-gray-100 pb-8">
+                  {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-20 mx-auto mb-4 object-contain" />}
+                  <h1 className="text-3xl font-black uppercase title-font">{config.mensaje_bienvenida}</h1>
+                  <p className="text-gray-500 font-bold mt-2">WhatsApp: +{config.whatsapp_numero.replace(/\D/g, '')}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                  {products.filter(p => p.disponible).map(p => (
+                    <div key={p.id} className="border border-gray-100 p-4 rounded-2xl flex flex-col items-center text-center" style={{ breakInside: 'avoid' }}>
+                      {p.fotos?.[0] ? (
+                        <img src={p.fotos[0]} className="w-32 h-32 object-contain mb-3 mix-blend-multiply" />
+                      ) : (
+                        <div className="w-32 h-32 bg-gray-50 flex items-center justify-center mb-3 rounded-xl"><ImageIcon className="text-gray-300" /></div>
+                      )}
+                      <h3 className="font-bold text-sm mb-1 leading-tight text-gray-800">{p.nombre}</h3>
+                      <p className="text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-wider">Mínimo: {p.compra_minima_unidad} u.</p>
+                      <div className="font-black text-xl title-font" style={{ color: config.color_primario }}>${Number(p.precio_mayor).toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-12 text-center text-xs text-gray-400 font-bold uppercase tracking-widest border-t border-gray-100 pt-6">
+                  Catálogo generado automáticamente el {new Date().toLocaleDateString()}
+                </div>
+              </div>
+            )}
           </div>
         );
       }
