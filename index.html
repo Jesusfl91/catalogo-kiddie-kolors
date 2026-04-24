@@ -955,7 +955,8 @@
               </div>
 
               <div className="flex-grow bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100/50 p-6 md:p-8 min-h-[500px]">
-                {activeTab === 'pedidos' && <AdminPedidos pedidos={pedidos} showMsg={showMsg} />}
+                {/* SE PASA "config" A AdminPedidos PARA USAR LA CLAVE */}
+                {activeTab === 'pedidos' && <AdminPedidos pedidos={pedidos} showMsg={showMsg} config={config} />}
                 {activeTab === 'apariencia' && <AdminApariencia config={config} showMsg={showMsg} />}
                 {activeTab === 'ajustes' && <AdminAjustes config={config} showMsg={showMsg} />}
                 {activeTab === 'categorias' && <AdminCategories categories={categories} showMsg={showMsg} config={config} />}
@@ -968,12 +969,51 @@
       }
 
       // --- Sub-componente: Admin Pedidos ---
-      function AdminPedidos({ pedidos, showMsg }) {
+      function AdminPedidos({ pedidos, showMsg, config }) {
         const [expandedId, setExpandedId] = useState(null);
+        // NUEVOS ESTADOS PARA BORRAR Y DESCARGAR
+        const [orderToDelete, setOrderToDelete] = useState(null);
+        const [deletePassword, setDeletePassword] = useState('');
+        const [isDownloadingOrder, setIsDownloadingOrder] = useState(null);
 
         const updateStatus = async (id, newStatus) => {
           try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', id), { estado: newStatus }); showMsg('Estado del pedido actualizado'); } 
           catch (e) { showMsg('Error al actualizar', 'error'); }
+        };
+
+        // FUNCIÓN PARA ELIMINAR PEDIDO CON CONTRASEÑA
+        const confirmDeleteOrder = async () => {
+          if (deletePassword !== config.admin_password) {
+            showMsg('Clave de administrador incorrecta', 'error');
+            return;
+          }
+          try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', orderToDelete.id));
+            showMsg('Pedido eliminado permanentemente');
+          } catch (e) {
+            showMsg('Error al eliminar', 'error');
+          } finally {
+            setOrderToDelete(null);
+            setDeletePassword('');
+          }
+        };
+
+        // FUNCIÓN PARA GENERAR TICKET DEL ADMIN
+        const downloadOrderTicket = async (pedido) => {
+          setIsDownloadingOrder(pedido.id);
+          try {
+            const element = document.getElementById(`admin-ticket-${pedido.id}`);
+            const canvas = await window.html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `Orden_KiddieKolors_${pedido.id.slice(-6).toUpperCase()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+          } catch (e) {
+            console.error("Error al generar la imagen", e);
+            showMsg('Error al generar Ticket', 'error');
+          } finally {
+            setIsDownloadingOrder(null);
+          }
         };
 
         const getStatusColor = (status) => {
@@ -988,13 +1028,65 @@
 
         return (
           <div className="animate-in fade-in">
+            {/* MODAL DE SEGURIDAD PARA BORRAR PEDIDOS */}
+            {orderToDelete && (
+              <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[110] px-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
+                  <h3 className="text-xl font-black text-red-600 mb-3 uppercase tracking-wide title-font flex items-center gap-2"><AlertTriangle size={20}/> Eliminar Pedido</h3>
+                  <p className="text-gray-600 mb-4 text-sm font-medium">
+                    Vas a borrar permanentemente el pedido <strong>#{orderToDelete.id.slice(-6).toUpperCase()}</strong> de {orderToDelete.cliente?.firstName}. Ingresa la clave de acceso de administrador para autorizar.
+                  </p>
+                  <Input label="Clave de Administrador" type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder="••••••••" className="mb-6" />
+                  <div className="flex gap-3">
+                    <Button onClick={() => {setOrderToDelete(null); setDeletePassword('');}} variant="secondary" className="flex-1 py-3 text-xs">Cancelar</Button>
+                    <Button onClick={confirmDeleteOrder} variant="danger" className="flex-1 py-3 text-xs" disabled={!deletePassword}>Eliminar</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Gestión de Pedidos</h3><p className="text-sm text-gray-500 font-medium">Revisa las solicitudes de compra de tus clientes</p></div>
             {pedidos.length === 0 ? (
               <div className="text-center py-20 bg-gray-50 rounded-2xl border border-gray-100"><Package className="w-16 h-16 mx-auto mb-4 text-gray-300" /><p className="font-bold text-gray-500">Aún no hay pedidos registrados.</p></div>
             ) : (
               <div className="space-y-4">
                 {pedidos.map(pedido => (
-                  <div key={pedido.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+                  <div key={pedido.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all relative">
+                    {/* TICKET DIGITAL OCULTO (Para que html2canvas lo dibuje y descargue sin molestar en la pantalla) */}
+                    <div id={`admin-ticket-${pedido.id}`} className="absolute -left-[9999px] top-0 w-[500px] bg-white p-10">
+                      <div className="text-center mb-6">
+                        {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-16 object-contain mb-4 mx-auto" />}
+                        <h2 className="text-2xl font-black title-font uppercase text-gray-900 tracking-wide">RESUMEN DE PEDIDO</h2>
+                        <p className="text-gray-500 font-bold text-sm mt-1">Nº #{pedido.id.slice(-6).toUpperCase()}</p>
+                        <p className="text-gray-400 font-bold text-xs">{new Date(pedido.fecha).toLocaleString()}</p>
+                      </div>
+                      
+                      <div className="border-t border-b border-gray-200 py-4 mb-6 text-gray-800">
+                        <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-2">Datos del Cliente</h4>
+                        <p className="text-base font-bold mb-1">{pedido.cliente?.firstName} {pedido.cliente?.lastName}</p>
+                        <p className="text-sm mb-1">Tel: {pedido.cliente?.phone} | {pedido.cliente?.email}</p>
+                        <p className="text-sm">Dir: {pedido.cliente?.address}, {pedido.cliente?.city}</p>
+                        {pedido.cliente?.note && <p className="text-sm italic mt-2 text-gray-500 bg-gray-50 p-2 rounded-lg">" {pedido.cliente.note} "</p>}
+                      </div>
+                      
+                      <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-3">Detalle de Artículos</h4>
+                      <div className="space-y-3 mb-6 border-b border-gray-100 pb-6">
+                        {pedido.items?.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-sm items-center">
+                            <span className="font-medium text-gray-700 w-2/3">{item.cantidad}x {item.nombre}</span>
+                            <span className="text-gray-500 text-xs">${Number(item.precio).toFixed(2)} c/u</span>
+                            <span className="font-bold text-gray-900 text-right w-1/4">${(item.cantidad * item.precio).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
+                        <span className="font-bold text-gray-600 uppercase text-xs">Total del Pedido</span>
+                        <span className="font-black text-2xl title-font" style={{ color: config.color_primario }}>${Number(pedido.total).toFixed(2)} USD</span>
+                      </div>
+                    </div>
+                    {/* FIN DEL TICKET OCULTO */}
+
                     <div className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedId(expandedId === pedido.id ? null : pedido.id)}>
                       <div>
                         <div className="flex items-center gap-3 mb-1"><span className="font-black title-font text-lg">#{pedido.id.slice(-6).toUpperCase()}</span><span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border ${getStatusColor(pedido.estado)}`}>{pedido.estado}</span></div>
@@ -1009,7 +1101,19 @@
                       <div className="p-5 bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                           <div className="bg-white p-4 rounded-xl border border-gray-200"><h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Datos del Cliente</h4><ul className="text-sm space-y-2 text-gray-700"><li><strong>Tel/WA:</strong> {pedido.cliente?.phone}</li><li><strong>Email:</strong> {pedido.cliente?.email}</li><li><strong>Ubicación:</strong> {pedido.cliente?.city}, {pedido.cliente?.country}</li><li><strong>Dirección:</strong> {pedido.cliente?.address}</li>{pedido.cliente?.note && <li className="text-gray-500 italic mt-2 text-xs">" {pedido.cliente.note} "</li>}</ul></div>
-                          <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col justify-center"><h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Cambiar Estado</h4><select value={pedido.estado} onChange={(e) => updateStatus(pedido.id, e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:outline-none text-sm font-bold text-gray-700"><option value="Pendiente">Pendiente (Recién llegado)</option><option value="Procesado">Procesado (Armando/Empacando)</option><option value="Completado">Completado (Enviado/Pagado)</option><option value="Cancelado">Cancelado</option></select><a href={`https://wa.me/${pedido.cliente?.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="mt-3 text-center text-xs font-bold text-green-600 bg-green-50 py-2 rounded-lg hover:bg-green-100 transition-colors">Contactar al cliente por WhatsApp</a></div>
+                          <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col justify-center">
+                            <h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Opciones del Pedido</h4>
+                            <select value={pedido.estado} onChange={(e) => updateStatus(pedido.id, e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:outline-none text-sm font-bold text-gray-700 mb-3"><option value="Pendiente">Pendiente (Recién llegado)</option><option value="Procesado">Procesado (Armando/Empacando)</option><option value="Completado">Completado (Enviado/Pagado)</option><option value="Cancelado">Cancelado</option></select>
+                            <a href={`https://wa.me/${pedido.cliente?.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="w-full text-center text-xs font-bold text-green-600 bg-green-50 py-2.5 rounded-lg hover:bg-green-100 transition-colors mb-2 block">Hablar por WhatsApp</a>
+                            <div className="flex gap-2">
+                              <button onClick={() => downloadOrderTicket(pedido)} className={`flex-1 text-xs font-bold py-2.5 rounded-lg flex justify-center items-center gap-1 transition-colors ${isDownloadingOrder === pedido.id ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'}`} disabled={isDownloadingOrder === pedido.id}>
+                                {isDownloadingOrder === pedido.id ? <Check size={14}/> : <Download size={14}/>} Ticket
+                              </button>
+                              <button onClick={() => setOrderToDelete(pedido)} className="flex-1 text-xs font-bold text-red-600 bg-white border border-red-200 py-2.5 rounded-lg hover:bg-red-50 transition-colors flex justify-center items-center gap-1">
+                                <Trash2 size={14}/> Borrar
+                              </button>
+                            </div>
+                          </div>
                         </div>
                         <h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Artículos del Pedido</h4>
                         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
