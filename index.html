@@ -43,7 +43,7 @@
     <!-- Traductor Babel para poder usar React dentro de HTML -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- NUEVO: Generador de Imágenes para descargar el Ticket como PNG -->
+    <!-- Generador de Imágenes para descargar el Ticket como PNG -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <!-- Import Maps: Le dice al navegador de dónde sacar las librerías -->
@@ -70,7 +70,7 @@
       import { 
         ShoppingCart, Search, Menu, X, Plus, Minus, Trash2, Edit, 
         Image as ImageIcon, Save, LogIn, ChevronRight, ChevronLeft, Check, Copy,
-        Download, Upload, FileJson, FileSpreadsheet, AlertTriangle, LogOut, ChevronDown, Package, Clock, CheckCircle, FileText, TrendingUp, Percent
+        Download, Upload, FileJson, FileSpreadsheet, AlertTriangle, LogOut, ChevronDown, Package, Clock, CheckCircle, FileText, TrendingUp, Percent, ArrowUp, ArrowDown
       } from 'lucide-react';
       import { initializeApp } from 'firebase/app';
       import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
@@ -98,7 +98,7 @@
       const appId = 'catalogo-kiddie-kolors';
 
       // ============================================================================
-      // UTILIDAD: CONVERSOR Y COMPRESOR DE IMÁGENES
+      // UTILIDADES
       // ============================================================================
       const compressImage = (file, maxWidth = 800) => {
         return new Promise((resolve, reject) => {
@@ -126,6 +126,24 @@
           };
           reader.onerror = error => reject(error);
         });
+      };
+
+      // Componente Botón de Copiar
+      const CopyButton = ({ text }) => {
+        const [copied, setCopied] = useState(false);
+        const handleCopy = () => {
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          try { document.execCommand('copy'); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (err) {}
+          document.body.removeChild(textArea);
+        };
+        return (
+          <button onClick={handleCopy} className="ml-2 p-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-500 transition-colors flex-shrink-0" title="Copiar dato">
+            {copied ? <Check size={14} className="text-green-600"/> : <Copy size={14}/>}
+          </button>
+        );
       };
 
       // ============================================================================
@@ -183,7 +201,7 @@
       function App() {
         const [user, setUser] = useState(null);
         const [loading, setLoading] = useState(true);
-        const [isConfigLoaded, setIsConfigLoaded] = useState(false); // NUEVO ESTADO PARA ESPERAR LA APARIENCIA
+        const [isConfigLoaded, setIsConfigLoaded] = useState(false); 
         const [view, setView] = useState('catalog'); 
         const [isCartOpen, setIsCartOpen] = useState(false); 
         
@@ -197,19 +215,23 @@
         const [lastOrderId, setLastOrderId] = useState(() => localStorage.getItem('kiddie_last_order'));
         const [lastOrder, setLastOrder] = useState(null);
         const [showLastOrder, setShowLastOrder] = useState(false);
-        const [isDownloadingTracking, setIsDownloadingTracking] = useState(false); // ESTADO DE DESCARGA
+        const [isDownloadingTracking, setIsDownloadingTracking] = useState(false); 
 
-        // SE AGREGA EL CAMPO "admin_email" y "datos_pago" A LA CONFIGURACIÓN INICIAL
+        // CONFIGURACIÓN EXTENDIDA CON PAGOS Y LOGOS EXTERNOS
         const [config, setConfig] = useState({
           banner_url: '', 
-          logo_url: 'https://i.postimg.cc/fTt2DkQW/fgrtg.png', 
+          logo_url: '', 
           color_primario: '#2563eb',
           whatsapp_numero: '1234567890',
           admin_email: '', 
           mensaje_bienvenida: 'KIDDIE KOLORS',
           monto_minimo: 100,
           admin_password: 'admin123',
-          datos_pago: '💳 Transferencia Bancaria:\nBanco: Ejemplo\nCuenta: 0000-0000-0000\n\n📲 Zelle:\npagos@kiddiekolors.com'
+          pago_movil: '',
+          pago_zelle: '',
+          pago_usdt: '',
+          logo_mercadolibre: '',
+          logo_cashea: ''
         });
         
         const [categories, setCategories] = useState([]);
@@ -218,20 +240,13 @@
         const [pedidos, setPedidos] = useState([]);
         const [activeCategory, setActiveCategory] = useState('all');
 
-        // EFECTO: INYECTAR FAVICON Y TÍTULO DINÁMICO
         useEffect(() => {
           if (config.logo_url) {
             let link = document.querySelector("link[rel~='icon']");
-            if (!link) {
-              link = document.createElement('link');
-              link.rel = 'icon';
-              document.head.appendChild(link);
-            }
+            if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
             link.href = config.logo_url;
           }
-          if (config.mensaje_bienvenida) {
-            document.title = config.mensaje_bienvenida;
-          }
+          if (config.mensaje_bienvenida) document.title = config.mensaje_bienvenida;
         }, [config.logo_url, config.mensaje_bienvenida]);
 
         useEffect(() => {
@@ -240,10 +255,8 @@
           };
           initAuth();
 
-          // DETECTOR DE ENLACE SECRETO (PUERTA TRASERA)
           if (window.location.hash === '#kiddieadmin') {
             setShowLoginModal(true);
-            // Limpia la URL para que no se quede a la vista
             window.history.replaceState(null, '', window.location.pathname);
           }
 
@@ -265,7 +278,7 @@
           const unsubConfig = onSnapshot(configRef, (docSnap) => {
             if (docSnap.exists()) setConfig(docSnap.data());
             else setDoc(configRef, config).catch(console.error);
-            setIsConfigLoaded(true); // CONFIRMAMOS QUE LA APARIENCIA CARGÓ
+            setIsConfigLoaded(true);
           }, console.error);
 
           const unsubCategories = onSnapshot(categoriesRef, (snapshot) => {
@@ -287,7 +300,6 @@
             setPedidos(peds.sort((a, b) => b.fecha - a.fecha));
           }, console.error);
 
-          // DETECTAR EN TIEMPO REAL EL ÚLTIMO PEDIDO DEL CLIENTE
           let unsubLastOrder = () => {};
           if (lastOrderId) {
             const lastOrderRef = doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', lastOrderId);
@@ -331,15 +343,18 @@
             const cartRef = collection(db, 'artifacts', appId, 'users', user.uid, 'carrito');
             await Promise.all(cart.map(item => deleteDoc(doc(cartRef, item.id))));
             
-            // GUARDAR EN LA MEMORIA DEL NAVEGADOR
             localStorage.setItem('kiddie_last_order', docRef.id);
             setLastOrderId(docRef.id);
-
             return docRef.id; 
-          } catch (e) {
-            console.error("Error creando pedido:", e);
-            return null;
-          }
+          } catch (e) { return null; }
+        };
+
+        // MARCAR PEDIDO COMO PAGADO (CLIENTE)
+        const reportPayment = async () => {
+          if (!lastOrder) return;
+          try {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', lastOrder.id), { estado: 'Pago Reportado' });
+          } catch (error) { console.error("Error reportando pago:", error); }
         };
 
         const cartTotal = useMemo(() => cart.reduce((total, item) => total + (item.product.precio_mayor * item.quantity), 0), [cart]);
@@ -361,7 +376,6 @@
           setIsAdminAuth(false); sessionStorage.removeItem('adminAuth'); setView('catalog');
         };
 
-        // NUEVA FUNCIÓN: Descargar el Ticket de Seguimiento como Imagen
         const downloadTrackingTicket = async () => {
           setIsDownloadingTracking(true);
           try {
@@ -371,23 +385,14 @@
             link.download = `Seguimiento_KiddieKolors_${lastOrder.id.slice(-6).toUpperCase()}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
-            
-            // Mostrar texto de éxito temporal
             setTimeout(() => setIsDownloadingTracking(false), 2000);
-          } catch (e) {
-            console.error("Error al generar la imagen", e);
-            setIsDownloadingTracking(false);
-          }
+          } catch (e) { setIsDownloadingTracking(false); }
         };
 
-        // PANTALLA DE CARGA ANIMADA Y PROTEGIDA
         if (loading || !isConfigLoaded) return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa]">
             <div className="relative flex items-center justify-center">
-              {config.logo_url && (
-                <img src={config.logo_url} alt="Logo" className="absolute h-10 md:h-14 object-contain z-10 animate-pulse drop-shadow-md" />
-              )}
-              {/* Anillo giratorio con el color de la marca (azul por defecto hasta que cargue) */}
+              {config.logo_url && <img src={config.logo_url} alt="Logo" className="absolute h-10 md:h-14 object-contain z-10 animate-pulse drop-shadow-md" />}
               <div className="animate-spin rounded-full h-24 w-24 md:h-32 md:w-32 border-t-4 border-b-4 border-gray-200" style={{ borderTopColor: config.color_primario }}></div>
             </div>
             <p className="mt-8 text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest animate-pulse title-font">Preparando Tienda...</p>
@@ -400,16 +405,13 @@
               <div className="flex items-center gap-4">
                 <span className="uppercase">{config.mensaje_bienvenida}</span>
               </div>
-              
               <div className="flex items-center gap-4">
                 {isAdminAuth ? (
                   <div className="flex items-center gap-3">
                     <button onClick={() => setView('admin')} className={`hover:text-gray-900 flex items-center gap-1 transition-colors ${view==='admin'?'text-gray-900':'text-gray-500'}`}><Edit size={14} /> Panel</button>
                     <button onClick={handleLogout} className="hover:text-red-600 flex items-center gap-1 transition-colors text-gray-400"><LogOut size={14} /> Salir</button>
                   </div>
-                ) : (
-                  <div className="hidden"></div> // BOTÓN DE ADMIN ELIMINADO PARA LOS CLIENTES
-                )}
+                ) : ( <div className="hidden"></div> )}
               </div>
             </header>
 
@@ -418,7 +420,7 @@
               {view === 'admin' && <AdminView config={config} categories={categories} products={products} pedidos={pedidos} setView={setView} />}
             </main>
 
-            {/* BOTÓN FLOTANTE: MI PEDIDO (SEGUIMIENTO PARA CLIENTES) */}
+            {/* BOTÓN FLOTANTE: MI PEDIDO */}
             {lastOrder && view === 'catalog' && (
               <button 
                 onClick={() => setShowLastOrder(true)} 
@@ -450,39 +452,7 @@
 
             {isCartOpen && <CartDrawer config={config} cart={cart} cartTotal={cartTotal} updateCartQuantity={updateCartQuantity} removeFromCart={removeFromCart} onClose={() => setIsCartOpen(false)} createOrder={createOrder} />}
 
-            {showLoginModal && (
-              <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[100] px-4 animate-in fade-in duration-200">
-                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in-95 duration-200">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-black title-font text-gray-800">Acceso Admin</h3>
-                    <button onClick={() => {setShowLoginModal(false); setShowRecoveryInfo(false);}} className="text-gray-400 hover:text-gray-900 transition-colors bg-gray-100 hover:bg-gray-200 p-2 rounded-full"><X size={20} /></button>
-                  </div>
-                  
-                  {!showRecoveryInfo ? (
-                    <form onSubmit={handleLoginSubmit}>
-                      <Input label="Contraseña" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="••••••••" required />
-                      {loginError && <p className="text-red-500 text-sm font-bold mb-4 -mt-2">{loginError}</p>}
-                      <Button type="submit" className="w-full py-3.5 mb-4" style={{ backgroundColor: config.color_primario }}>Ingresar al Panel</Button>
-                      
-                      <button type="button" onClick={() => setShowRecoveryInfo(true)} className="w-full text-center text-xs font-bold text-gray-400 hover:text-gray-600 underline transition-colors">
-                        ¿Olvidaste tu contraseña?
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-sm text-gray-600 text-center animate-in fade-in">
-                      <p className="font-bold text-gray-800 mb-3 uppercase tracking-wider text-xs">🔒 Recuperación Segura</p>
-                      <p className="mb-5 text-xs leading-relaxed">
-                        Por seguridad, la clave solo puede verla el dueño de la tienda.<br/><br/>
-                        Ingresa a tu cuenta de Firebase (<strong className="text-gray-800">console.firebase.google.com</strong>), entra a tu base de datos <strong>Firestore Database</strong> &gt; <strong>config</strong> &gt; <strong>main</strong> y revisa el campo "<strong className="text-gray-800">admin_password</strong>".
-                      </p>
-                      <Button onClick={() => setShowRecoveryInfo(false)} variant="secondary" className="w-full py-2.5 text-xs uppercase tracking-wider">Volver al login</Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* MODAL DE SEGUIMIENTO DE PEDIDO (TICKET) */}
+            {/* MODAL DE SEGUIMIENTO DE PEDIDO (TICKET CLIENTE) */}
             {showLastOrder && lastOrder && (
               <div className="fixed inset-0 z-[100] flex justify-center bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300 p-4">
                 <div className="w-full max-w-md bg-[#fafafa] h-full max-h-[90vh] my-auto rounded-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden relative">
@@ -491,7 +461,6 @@
                     <button onClick={() => setShowLastOrder(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} /></button>
                   </div>
                   
-                  {/* SE AÑADE EL ID "ticket-tracking" PARA CAPTURAR LA IMAGEN */}
                   <div id="ticket-tracking" className="flex-grow overflow-y-auto p-6 printable-section hide-scrollbar bg-white">
                     {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-12 object-contain mb-6 mx-auto" />}
                     <div className="text-center mb-6">
@@ -499,6 +468,7 @@
                       <p className="text-gray-500 text-sm font-bold">ID: #{lastOrder.id.slice(-6).toUpperCase()}</p>
                       <div className={`mt-3 inline-block px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider border
                         ${lastOrder.estado === 'Pendiente' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' : 
+                          lastOrder.estado === 'Pago Reportado' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
                           lastOrder.estado === 'Procesado' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
                           lastOrder.estado === 'Completado' ? 'bg-green-50 text-green-600 border-green-200' : 
                           'bg-red-50 text-red-600 border-red-200'}`}>
@@ -509,10 +479,9 @@
                     <div className="border-t border-b border-gray-100 py-4 mb-6">
                       <p className="text-sm font-bold text-gray-800 mb-1">{lastOrder.cliente?.firstName} {lastOrder.cliente?.lastName}</p>
                       <p className="text-xs text-gray-500 mb-1">{lastOrder.cliente?.phone} | {lastOrder.cliente?.email}</p>
-                      <p className="text-xs text-gray-500">{lastOrder.cliente?.address}, {lastOrder.cliente?.city}</p>
                     </div>
 
-                    <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-3">Resumen de Artículos</h4>
+                    <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-3">Resumen</h4>
                     <div className="space-y-3 mb-6">
                       {lastOrder.items?.map((item, idx) => (
                         <div key={idx} className="flex justify-between text-sm">
@@ -527,24 +496,76 @@
                       <span className="font-black text-xl title-font" style={{ color: config.color_primario }}>${Number(lastOrder.total).toFixed(2)} USD</span>
                     </div>
 
-                    {config.datos_pago && (
-                      <div className="mt-6 p-5 border border-dashed border-gray-300 rounded-2xl bg-gray-50">
-                        <h4 className="font-black text-xs uppercase tracking-widest text-gray-800 mb-3 flex items-center gap-2">💰 Instrucciones de Pago</h4>
-                        <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium">{config.datos_pago}</p>
+                    {/* MÉTODOS DE PAGO EN SEGUIMIENTO */}
+                    {(config.pago_movil || config.pago_zelle || config.pago_usdt) && (
+                      <div className="mt-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 no-print">
+                        <h4 className="font-black text-[11px] uppercase text-gray-800 tracking-widest mb-4">💰 Métodos de Pago</h4>
+                        <div className="space-y-3">
+                          {config.pago_movil && (
+                            <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                              <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Pago Móvil</p><p className="text-xs font-bold text-gray-800">{config.pago_movil}</p></div>
+                              <CopyButton text={config.pago_movil} />
+                            </div>
+                          )}
+                          {config.pago_zelle && (
+                            <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                              <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Zelle</p><p className="text-xs font-bold text-gray-800">{config.pago_zelle}</p></div>
+                              <CopyButton text={config.pago_zelle} />
+                            </div>
+                          )}
+                          {config.pago_usdt && (
+                            <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                              <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Binance / USDT</p><p className="text-xs font-bold text-gray-800 break-all">{config.pago_usdt}</p></div>
+                              <CopyButton text={config.pago_usdt} />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="p-4 bg-white border-t border-gray-100 no-print flex gap-3">
-                    <Button onClick={downloadTrackingTicket} className={`flex-1 text-xs transition-colors ${isDownloadingTracking ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100' : ''}`} variant="secondary" disabled={isDownloadingTracking}>
-                      {isDownloadingTracking ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>} 
-                      {isDownloadingTracking ? '¡Guardado!' : 'Guardar Imagen'}
-                    </Button>
-                    <Button onClick={() => {
-                      const url = `https://api.whatsapp.com/send?phone=${config.whatsapp_numero.replace(/\D/g, '')}&text=${encodeURIComponent(`Hola, soy ${lastOrder.cliente?.firstName}, escribo para consultar el estado de mi pedido #${lastOrder.id.slice(-6).toUpperCase()}`)}`;
-                      window.open(url, '_blank');
-                    }} className="flex-1 text-xs" style={{ backgroundColor: '#25D366' }}><Package size={16} className="mr-2"/> Contactar</Button>
+                  <div className="p-4 bg-white border-t border-gray-100 no-print flex flex-col gap-3">
+                    {/* BOTÓN PARA REPORTAR PAGO */}
+                    {(lastOrder.estado === 'Pendiente' || lastOrder.estado === 'Procesado') && (
+                      <Button onClick={reportPayment} className="w-full text-xs py-3" style={{ backgroundColor: '#10b981' }}>
+                        ¡Ya Pagué! (Notificar)
+                      </Button>
+                    )}
+                    <div className="flex gap-3">
+                      <Button onClick={downloadTrackingTicket} className={`flex-1 text-xs transition-colors ${isDownloadingTracking ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100' : ''}`} variant="secondary" disabled={isDownloadingTracking}>
+                        {isDownloadingTracking ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>} Ticket
+                      </Button>
+                      <Button onClick={() => {
+                        const url = `https://api.whatsapp.com/send?phone=${config.whatsapp_numero.replace(/\D/g, '')}&text=${encodeURIComponent(`Hola, soy ${lastOrder.cliente?.firstName}, escribo para consultar el estado de mi pedido #${lastOrder.id.slice(-6).toUpperCase()}`)}`;
+                        window.open(url, '_blank');
+                      }} className="flex-1 text-xs" style={{ backgroundColor: '#25D366' }}><Package size={16} className="mr-2"/> Contactar</Button>
+                    </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {showLoginModal && (
+              <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[100] px-4 animate-in fade-in duration-200">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in-95 duration-200">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-black title-font text-gray-800">Acceso Admin</h3>
+                    <button onClick={() => {setShowLoginModal(false); setShowRecoveryInfo(false);}} className="text-gray-400 hover:text-gray-900 transition-colors bg-gray-100 hover:bg-gray-200 p-2 rounded-full"><X size={20} /></button>
+                  </div>
+                  {!showRecoveryInfo ? (
+                    <form onSubmit={handleLoginSubmit}>
+                      <Input label="Contraseña" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="••••••••" required />
+                      {loginError && <p className="text-red-500 text-sm font-bold mb-4 -mt-2">{loginError}</p>}
+                      <Button type="submit" className="w-full py-3.5 mb-4" style={{ backgroundColor: config.color_primario }}>Ingresar al Panel</Button>
+                      <button type="button" onClick={() => setShowRecoveryInfo(true)} className="w-full text-center text-xs font-bold text-gray-400 hover:text-gray-600 underline transition-colors">¿Olvidaste tu contraseña?</button>
+                    </form>
+                  ) : (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-sm text-gray-600 text-center animate-in fade-in">
+                      <p className="font-bold text-gray-800 mb-3 uppercase tracking-wider text-xs">🔒 Recuperación Segura</p>
+                      <p className="mb-5 text-xs leading-relaxed">Ingresa a tu cuenta de Firebase (<strong className="text-gray-800">console.firebase.google.com</strong>), entra a tu base de datos <strong>Firestore Database</strong> &gt; <strong>config</strong> &gt; <strong>main</strong> y revisa el campo "<strong className="text-gray-800">admin_password</strong>".</p>
+                      <Button onClick={() => setShowRecoveryInfo(false)} variant="secondary" className="w-full py-2.5 text-xs uppercase tracking-wider">Volver al login</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -556,7 +577,13 @@
       // VISTA: CATÁLOGO PRINCIPAL
       // ============================================================================
       function CatalogView({ config, categories, products, activeCategory, setActiveCategory, addToCart, cart, updateCartQuantity }) {
-        const filteredProducts = activeCategory === 'all' ? products : products.filter(p => p.categoria_id === activeCategory);
+        // FILTRADO INTELIGENTE: Detecta si tiene varias categorías o la categoría clásica
+        const filteredProducts = activeCategory === 'all' 
+          ? products 
+          : products.filter(p => {
+              if (p.categorias_ids && p.categorias_ids.length > 0) return p.categorias_ids.includes(activeCategory);
+              return p.categoria_id === activeCategory;
+            });
 
         return (
           <div className="animate-in fade-in duration-300">
@@ -621,7 +648,22 @@
         };
 
         return (
-          <div className={`bg-white rounded-2xl p-4 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col border border-gray-100 group ${!product.disponible ? 'opacity-60' : ''}`}>
+          <div className={`bg-white rounded-2xl p-4 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col border border-gray-100 group ${!product.disponible ? 'opacity-60' : ''} relative`}>
+            
+            {/* BOTONES FLOTANTES DE MERCADOLIBRE Y CASHEA (CON LOGOS PERSONALIZADOS) */}
+            <div className="absolute top-6 right-6 z-20 flex flex-col gap-2">
+              {product.link_mercadolibre && (
+                <a href={product.link_mercadolibre} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full flex items-center justify-center shadow-[0_4px_10px_rgba(0,0,0,0.1)] hover:scale-110 transition-transform bg-[#FFE600] overflow-hidden" title="Comprar en MercadoLibre">
+                  {config.logo_mercadolibre ? <img src={config.logo_mercadolibre} alt="ML" className="w-full h-full object-cover" /> : <span className="text-[#2D3277] font-black text-[10px] title-font">ML</span>}
+                </a>
+              )}
+              {product.link_cashea && (
+                <a href={product.link_cashea} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full flex items-center justify-center shadow-[0_4px_10px_rgba(0,0,0,0.1)] hover:scale-110 transition-transform bg-[#00FF85] overflow-hidden" title="Comprar con Cashea">
+                  {config.logo_cashea ? <img src={config.logo_cashea} alt="Cashea" className="w-full h-full object-cover" /> : <span className="text-[#000000] font-black text-[9px] title-font">CSH</span>}
+                </a>
+              )}
+            </div>
+
             <div className="aspect-square bg-gray-50/50 rounded-xl mb-4 flex items-center justify-center relative overflow-hidden group-hover:bg-gray-100/50 transition-colors">
               <div className="flex w-full h-full overflow-x-auto snap-x snap-mandatory hide-scrollbar" onScroll={handleScroll}>
                 {images.map((img, idx) => (
@@ -645,6 +687,8 @@
             </div>
 
             <div className="flex-grow flex flex-col">
+              {/* ETIQUETA SKU/UPC */}
+              {product.sku && <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md font-bold uppercase tracking-widest mb-1 w-max">SKU: {product.sku}</span>}
               <h3 className="font-bold text-gray-700 text-sm line-clamp-2 leading-tight min-h-[2.5rem] mb-1">{product.nombre}</h3>
               <div className="mt-2 mb-4 flex justify-between items-end">
                 <span className="font-black text-gray-900 text-xl title-font">${Number(product.precio_mayor).toFixed(2)}</span>
@@ -679,14 +723,12 @@
         const [waLink, setWaLink] = useState('');
         const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', country: '', city: '', address: '', note: '' });
         
-        // NUEVO ESTADO: Tomar una "foto" del carrito para la pantalla final y descargar imagen
         const [finalSnapshot, setFinalSnapshot] = useState({ items: [], total: 0 });
         const [savedOrderId, setSavedOrderId] = useState('');
         const [isDownloadingTicket, setIsDownloadingTicket] = useState(false);
 
         const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-        // NUEVA FUNCIÓN: Descargar el Ticket Recién Creado
         const downloadCheckoutTicket = async () => {
           setIsDownloadingTicket(true);
           try {
@@ -696,13 +738,8 @@
             link.download = `Pedido_KiddieKolors_${savedOrderId}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
-            
-            // Mostrar éxito
             setTimeout(() => setIsDownloadingTicket(false), 2000);
-          } catch (e) {
-            console.error("Error al generar la imagen", e);
-            setIsDownloadingTicket(false);
-          }
+          } catch (e) { setIsDownloadingTicket(false); }
         };
 
         const handleCheckout = async (e) => {
@@ -719,8 +756,6 @@
 
           setCheckoutStatus('submitting');
           setErrorMessage('');
-          
-          // Tomar foto de los artículos antes de vaciar el carrito
           setFinalSnapshot({ items: [...cart], total: cartTotal });
 
           const orderData = {
@@ -736,7 +771,7 @@
           }
 
           const shortOrderId = orderIdFull.slice(-6).toUpperCase();
-          setSavedOrderId(shortOrderId); // Guardar ID para el nombre del archivo
+          setSavedOrderId(shortOrderId); 
           
           let text = `*NUEVO PEDIDO B2B*\n*ID de Pedido:* #${shortOrderId}\n\n*Cliente:* ${form.firstName} ${form.lastName}\n*Tel/WA:* ${form.phone}\n*Email:* ${form.email}\n*Ubicación:* ${form.city}, ${form.country}\n*Dirección:* ${form.address}\n`;
           if (form.note) text += `*Notas:* ${form.note}\n`;
@@ -744,54 +779,42 @@
           cart.forEach(item => { text += `▫️ ${item.quantity}x ${item.product.nombre} ($${item.product.precio_mayor.toFixed(2)}) -> *$${(item.quantity * item.product.precio_mayor).toFixed(2)}*\n`; });
           text += `\n*💰 TOTAL: $${cartTotal.toFixed(2)} USD*\n\nHe completado el registro en el catálogo. ¡Espero indicaciones para el pago!`;
           
-          // --- NUEVO: SISTEMA DE NOTIFICACIÓN POR CORREO (FORMSUBMIT) ---
           if (config.admin_email && config.admin_email.includes('@')) {
             fetch(`https://formsubmit.co/ajax/${config.admin_email}`, {
-              method: "POST",
-              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              method: "POST", headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
               body: JSON.stringify({
-                _subject: `🚀 NUEVO PEDIDO #${shortOrderId} - ${config.mensaje_bienvenida}`,
-                _template: "box",
-                Cliente: `${form.firstName} ${form.lastName}`,
-                Telefono_WhatsApp: form.phone,
-                Email_Cliente: form.email,
-                Monto_Total: `$${cartTotal.toFixed(2)} USD`,
-                Aviso: "Ingresa a tu panel de administrador para ver y gestionar los artículos exactos de este pedido."
+                _subject: `🚀 NUEVO PEDIDO #${shortOrderId} - ${config.mensaje_bienvenida}`, _template: "box",
+                Cliente: `${form.firstName} ${form.lastName}`, Telefono_WhatsApp: form.phone, Email_Cliente: form.email,
+                Monto_Total: `$${cartTotal.toFixed(2)} USD`, Aviso: "Ingresa a tu panel para gestionar los artículos."
               })
-            }).catch(err => console.log("Error enviando notificación email:", err));
+            }).catch(err => console.log(err));
           }
-          // --------------------------------------------------------------
 
           const cleanPhone = config.whatsapp_numero.replace(/\D/g, '');
           const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`;
           
           setWaLink(url);
           setCheckoutStatus('success');
-
-          try { window.open(url, '_blank'); } catch(err) { console.warn("Popup bloqueado", err); }
+          try { window.open(url, '_blank'); } catch(err) {}
         };
 
         if (checkoutStatus === 'success') {
           return (
             <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
               <div className="w-full max-w-md bg-[#fafafa] h-full flex flex-col shadow-2xl animate-in slide-in-from-right-full duration-400 overflow-hidden">
-                
-                {/* ÁREA DEL TICKET DIGITAL CON ID "ticket-checkout" */}
                 <div id="ticket-checkout" className="flex-grow overflow-y-auto p-6 md:p-8 printable-section bg-white hide-scrollbar">
                   <div className="text-center mb-8">
                     <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 no-print"><CheckCircle size={32} /></div>
                     {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-12 object-contain mb-4 mx-auto hidden print:block" />}
                     <h2 className="text-2xl font-black title-font text-gray-900 uppercase">¡Gracias, {form.firstName}!</h2>
                     <p className="text-gray-500 font-medium text-sm mt-1">Hemos recibido tu pedido correctamente.</p>
-                    
                     <div className="mt-4 inline-block px-4 py-2 rounded-lg bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs font-black uppercase tracking-wider">
-                      Pendiente de Verificación de Pago
+                      Pendiente de Pago
                     </div>
                   </div>
 
                   <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-3 border-b border-gray-100 pb-2">Resumen de tu pedido</h4>
                   <div className="space-y-3 mb-6">
-                    {/* USAMOS EL SNAPSHOT FINAL EN LUGAR DEL CARRITO VACÍO */}
                     {finalSnapshot.items.map((item, idx) => (
                       <div key={idx} className="flex justify-between text-sm">
                         <span className="font-medium text-gray-700">{item.quantity}x {item.product.nombre}</span>
@@ -805,23 +828,41 @@
                     <span className="font-black text-2xl title-font" style={{ color: config.color_primario }}>${finalSnapshot.total.toFixed(2)} USD</span>
                   </div>
 
-                  {config.datos_pago && (
-                    <div className="p-5 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 mb-6">
-                      <h4 className="font-black text-xs uppercase tracking-widest text-gray-800 mb-3 flex items-center gap-2">💰 Instrucciones de Pago</h4>
-                      <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium">{config.datos_pago}</p>
+                  {/* MÉTODOS DE PAGO */}
+                  {(config.pago_movil || config.pago_zelle || config.pago_usdt) && (
+                    <div className="mt-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 no-print">
+                      <h4 className="font-black text-[11px] uppercase text-gray-800 tracking-widest mb-4">💰 Cuentas para Pagar</h4>
+                      <div className="space-y-3">
+                        {config.pago_movil && (
+                          <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                            <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Pago Móvil</p><p className="text-xs font-bold text-gray-800">{config.pago_movil}</p></div>
+                            <CopyButton text={config.pago_movil} />
+                          </div>
+                        )}
+                        {config.pago_zelle && (
+                          <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                            <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Zelle</p><p className="text-xs font-bold text-gray-800">{config.pago_zelle}</p></div>
+                            <CopyButton text={config.pago_zelle} />
+                          </div>
+                        )}
+                        {config.pago_usdt && (
+                          <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100">
+                            <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Binance / USDT</p><p className="text-xs font-bold text-gray-800 break-all">{config.pago_usdt}</p></div>
+                            <CopyButton text={config.pago_usdt} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* BOTONES DE ACCIÓN (Ocultos en la imagen) */}
                 <div className="bg-white p-6 border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-10 no-print space-y-3">
                   <a href={waLink} target="_blank" rel="noreferrer" className="w-full py-3.5 text-sm tracking-widest shadow-lg rounded-xl font-black title-font text-white flex items-center justify-center gap-2 hover:opacity-90 transition-opacity" style={{ backgroundColor: '#25D366' }}>
                     ENVIAR POR WHATSAPP
                   </a>
                   <div className="flex gap-3">
                     <Button onClick={downloadCheckoutTicket} className={`flex-1 py-3 text-xs transition-colors ${isDownloadingTicket ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100' : ''}`} variant="secondary" disabled={isDownloadingTicket}>
-                      {isDownloadingTicket ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>}
-                      {isDownloadingTicket ? '¡Guardado!' : 'Guardar Ticket'}
+                      {isDownloadingTicket ? <Check size={16} className="mr-2 inline"/> : <Download size={16} className="mr-2 inline"/>} {isDownloadingTicket ? '¡Guardado!' : 'Guardar Ticket'}
                     </Button>
                     <Button onClick={onClose} className="flex-1 py-3 text-xs" variant="outlinePrimary" style={{ color: config.color_primario, borderColor: config.color_primario }}>Volver a la Tienda</Button>
                   </div>
@@ -941,7 +982,6 @@
 
             <div className="flex flex-col lg:flex-row gap-8">
               <div className="w-full lg:w-64 flex-shrink-0 flex lg:flex-col gap-2 overflow-x-auto pb-2 hide-scrollbar">
-                {/* SE AGREGA LA PESTAÑA DE AJUSTES */}
                 {['pedidos', 'productos', 'categorias', 'apariencia', 'ajustes', 'respaldo'].map(tab => (
                   <button
                     key={tab}
@@ -955,7 +995,6 @@
               </div>
 
               <div className="flex-grow bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100/50 p-6 md:p-8 min-h-[500px]">
-                {/* SE PASA "config" A AdminPedidos PARA USAR LA CLAVE */}
                 {activeTab === 'pedidos' && <AdminPedidos pedidos={pedidos} showMsg={showMsg} config={config} />}
                 {activeTab === 'apariencia' && <AdminApariencia config={config} showMsg={showMsg} />}
                 {activeTab === 'ajustes' && <AdminAjustes config={config} showMsg={showMsg} />}
@@ -971,7 +1010,6 @@
       // --- Sub-componente: Admin Pedidos ---
       function AdminPedidos({ pedidos, showMsg, config }) {
         const [expandedId, setExpandedId] = useState(null);
-        // NUEVOS ESTADOS PARA BORRAR Y DESCARGAR
         const [orderToDelete, setOrderToDelete] = useState(null);
         const [deletePassword, setDeletePassword] = useState('');
         const [isDownloadingOrder, setIsDownloadingOrder] = useState(null);
@@ -981,44 +1019,29 @@
           catch (e) { showMsg('Error al actualizar', 'error'); }
         };
 
-        // FUNCIÓN PARA ELIMINAR PEDIDO CON CONTRASEÑA
         const confirmDeleteOrder = async () => {
-          if (deletePassword !== config.admin_password) {
-            showMsg('Clave de administrador incorrecta', 'error');
-            return;
-          }
+          if (deletePassword !== config.admin_password) { showMsg('Clave incorrecta', 'error'); return; }
           try {
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', orderToDelete.id));
-            showMsg('Pedido eliminado permanentemente');
-          } catch (e) {
-            showMsg('Error al eliminar', 'error');
-          } finally {
-            setOrderToDelete(null);
-            setDeletePassword('');
-          }
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pedidos', orderToDelete.id)); showMsg('Pedido eliminado permanentemente');
+          } catch (e) { showMsg('Error al eliminar', 'error'); } 
+          finally { setOrderToDelete(null); setDeletePassword(''); }
         };
 
-        // FUNCIÓN PARA GENERAR TICKET DEL ADMIN
         const downloadOrderTicket = async (pedido) => {
           setIsDownloadingOrder(pedido.id);
           try {
             const element = document.getElementById(`admin-ticket-${pedido.id}`);
             const canvas = await window.html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-            const link = document.createElement('a');
-            link.download = `Orden_KiddieKolors_${pedido.id.slice(-6).toUpperCase()}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-          } catch (e) {
-            console.error("Error al generar la imagen", e);
-            showMsg('Error al generar Ticket', 'error');
-          } finally {
-            setIsDownloadingOrder(null);
-          }
+            const link = document.createElement('a'); link.download = `Orden_KiddieKolors_${pedido.id.slice(-6).toUpperCase()}.png`;
+            link.href = canvas.toDataURL('image/png'); link.click();
+          } catch (e) { showMsg('Error al generar Ticket', 'error'); } 
+          finally { setIsDownloadingOrder(null); }
         };
 
         const getStatusColor = (status) => {
           switch(status) {
             case 'Pendiente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+            case 'Pago Reportado': return 'bg-purple-100 text-purple-800 border-purple-200';
             case 'Procesado': return 'bg-blue-100 text-blue-800 border-blue-200';
             case 'Completado': return 'bg-green-100 text-green-800 border-green-200';
             case 'Cancelado': return 'bg-red-100 text-red-800 border-red-200';
@@ -1028,14 +1051,11 @@
 
         return (
           <div className="animate-in fade-in">
-            {/* MODAL DE SEGURIDAD PARA BORRAR PEDIDOS */}
             {orderToDelete && (
               <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[110] px-4 animate-in fade-in">
                 <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
                   <h3 className="text-xl font-black text-red-600 mb-3 uppercase tracking-wide title-font flex items-center gap-2"><AlertTriangle size={20}/> Eliminar Pedido</h3>
-                  <p className="text-gray-600 mb-4 text-sm font-medium">
-                    Vas a borrar permanentemente el pedido <strong>#{orderToDelete.id.slice(-6).toUpperCase()}</strong> de {orderToDelete.cliente?.firstName}. Ingresa la clave de acceso de administrador para autorizar.
-                  </p>
+                  <p className="text-gray-600 mb-4 text-sm font-medium">Vas a borrar permanentemente el pedido <strong>#{orderToDelete.id.slice(-6).toUpperCase()}</strong> de {orderToDelete.cliente?.firstName}. Ingresa tu clave para autorizar.</p>
                   <Input label="Clave de Administrador" type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder="••••••••" className="mb-6" />
                   <div className="flex gap-3">
                     <Button onClick={() => {setOrderToDelete(null); setDeletePassword('');}} variant="secondary" className="flex-1 py-3 text-xs">Cancelar</Button>
@@ -1052,7 +1072,6 @@
               <div className="space-y-4">
                 {pedidos.map(pedido => (
                   <div key={pedido.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all relative">
-                    {/* TICKET DIGITAL OCULTO (Para que html2canvas lo dibuje y descargue sin molestar en la pantalla) */}
                     <div id={`admin-ticket-${pedido.id}`} className="absolute -left-[9999px] top-0 w-[500px] bg-white p-10">
                       <div className="text-center mb-6">
                         {config.logo_url && <img src={config.logo_url} alt="Logo" className="h-16 object-contain mb-4 mx-auto" />}
@@ -1060,7 +1079,6 @@
                         <p className="text-gray-500 font-bold text-sm mt-1">Nº #{pedido.id.slice(-6).toUpperCase()}</p>
                         <p className="text-gray-400 font-bold text-xs">{new Date(pedido.fecha).toLocaleString()}</p>
                       </div>
-                      
                       <div className="border-t border-b border-gray-200 py-4 mb-6 text-gray-800">
                         <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-2">Datos del Cliente</h4>
                         <p className="text-base font-bold mb-1">{pedido.cliente?.firstName} {pedido.cliente?.lastName}</p>
@@ -1068,7 +1086,6 @@
                         <p className="text-sm">Dir: {pedido.cliente?.address}, {pedido.cliente?.city}</p>
                         {pedido.cliente?.note && <p className="text-sm italic mt-2 text-gray-500 bg-gray-50 p-2 rounded-lg">" {pedido.cliente.note} "</p>}
                       </div>
-                      
                       <h4 className="font-black text-[11px] uppercase text-gray-400 tracking-widest mb-3">Detalle de Artículos</h4>
                       <div className="space-y-3 mb-6 border-b border-gray-100 pb-6">
                         {pedido.items?.map((item, idx) => (
@@ -1079,17 +1096,21 @@
                           </div>
                         ))}
                       </div>
-                      
                       <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
                         <span className="font-bold text-gray-600 uppercase text-xs">Total del Pedido</span>
                         <span className="font-black text-2xl title-font" style={{ color: config.color_primario }}>${Number(pedido.total).toFixed(2)} USD</span>
                       </div>
                     </div>
-                    {/* FIN DEL TICKET OCULTO */}
 
                     <div className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedId(expandedId === pedido.id ? null : pedido.id)}>
                       <div>
-                        <div className="flex items-center gap-3 mb-1"><span className="font-black title-font text-lg">#{pedido.id.slice(-6).toUpperCase()}</span><span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border ${getStatusColor(pedido.estado)}`}>{pedido.estado}</span></div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="font-black title-font text-lg">#{pedido.id.slice(-6).toUpperCase()}</span>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border ${getStatusColor(pedido.estado)}`}>
+                            {pedido.estado === 'Pago Reportado' && <CheckCircle size={10} className="inline mr-1 -mt-0.5" />}
+                            {pedido.estado}
+                          </span>
+                        </div>
                         <div className="text-sm text-gray-600 font-medium">{pedido.cliente?.firstName} {pedido.cliente?.lastName} • {new Date(pedido.fecha).toLocaleDateString()}</div>
                       </div>
                       <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
@@ -1103,7 +1124,7 @@
                           <div className="bg-white p-4 rounded-xl border border-gray-200"><h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Datos del Cliente</h4><ul className="text-sm space-y-2 text-gray-700"><li><strong>Tel/WA:</strong> {pedido.cliente?.phone}</li><li><strong>Email:</strong> {pedido.cliente?.email}</li><li><strong>Ubicación:</strong> {pedido.cliente?.city}, {pedido.cliente?.country}</li><li><strong>Dirección:</strong> {pedido.cliente?.address}</li>{pedido.cliente?.note && <li className="text-gray-500 italic mt-2 text-xs">" {pedido.cliente.note} "</li>}</ul></div>
                           <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col justify-center">
                             <h4 className="font-black text-[11px] uppercase text-gray-500 tracking-widest mb-3 border-b pb-2">Opciones del Pedido</h4>
-                            <select value={pedido.estado} onChange={(e) => updateStatus(pedido.id, e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:outline-none text-sm font-bold text-gray-700 mb-3"><option value="Pendiente">Pendiente (Recién llegado)</option><option value="Procesado">Procesado (Armando/Empacando)</option><option value="Completado">Completado (Enviado/Pagado)</option><option value="Cancelado">Cancelado</option></select>
+                            <select value={pedido.estado} onChange={(e) => updateStatus(pedido.id, e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:outline-none text-sm font-bold text-gray-700 mb-3"><option value="Pendiente">Pendiente (Recién llegado)</option><option value="Pago Reportado">Pago Reportado (Por confirmar)</option><option value="Procesado">Procesado (Armando/Empacando)</option><option value="Completado">Completado (Enviado/Pagado)</option><option value="Cancelado">Cancelado</option></select>
                             <a href={`https://wa.me/${pedido.cliente?.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="w-full text-center text-xs font-bold text-green-600 bg-green-50 py-2.5 rounded-lg hover:bg-green-100 transition-colors mb-2 block">Hablar por WhatsApp</a>
                             <div className="flex gap-2">
                               <button onClick={() => downloadOrderTicket(pedido)} className={`flex-1 text-xs font-bold py-2.5 rounded-lg flex justify-center items-center gap-1 transition-colors ${isDownloadingOrder === pedido.id ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'}`} disabled={isDownloadingOrder === pedido.id}>
@@ -1140,6 +1161,8 @@
         const [formData, setFormData] = useState(config);
         const [isUploading, setIsUploading] = useState(false);
         const [isLogoUploading, setIsLogoUploading] = useState(false);
+        const [isMLUploading, setIsMLUploading] = useState(false);
+        const [isCasheaUploading, setIsCasheaUploading] = useState(false);
         
         useEffect(() => { setFormData(config); }, [config]);
 
@@ -1150,7 +1173,7 @@
 
         const handleFileUpload = async (e, field) => {
           const file = e.target.files[0]; if (!file) return;
-          const setLoader = field === 'logo_url' ? setIsLogoUploading : setIsUploading;
+          const setLoader = field === 'logo_url' ? setIsLogoUploading : field === 'logo_mercadolibre' ? setIsMLUploading : field === 'logo_cashea' ? setIsCasheaUploading : setIsUploading;
           setLoader(true);
           try {
             const maxWidth = field === 'banner_url' ? 1200 : 400;
@@ -1161,7 +1184,7 @@
 
         return (
           <div className="space-y-8 animate-in fade-in">
-            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Identidad de Marca</h3><p className="text-sm text-gray-500 font-medium">Personaliza los colores y el texto de tu catálogo</p></div>
+            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Identidad de Marca</h3></div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="space-y-2">
                 <Input label="Título Banner Superior" value={formData.mensaje_bienvenida} onChange={e => setFormData({...formData, mensaje_bienvenida: e.target.value})} />
@@ -1173,23 +1196,38 @@
               </div>
               <div className="space-y-6">
                 <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
-                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Logotipo (Fondo Transparente)</span><label className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-blue-100 transition-colors">{isLogoUploading ? 'Subiendo...' : 'Subir Imagen'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_url')} disabled={isLogoUploading}/></label></label>
+                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Logotipo Principal</span><label className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-blue-100 transition-colors">{isLogoUploading ? 'Subiendo...' : 'Subir Imagen'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_url')} disabled={isLogoUploading}/></label></label>
                   {formData.logo_url && <div className="bg-gray-200/50 rounded-xl p-4 flex items-center justify-center border border-gray-200/50 mb-3"><img src={formData.logo_url} alt="Logo" className="h-16 object-contain drop-shadow-md" /></div>}
                   <input type="text" value={formData.logo_url || ''} onChange={e => setFormData({...formData, logo_url: e.target.value})} placeholder="O pega el link aquí..." className="w-full px-3 py-2 border rounded-lg text-xs text-gray-500 bg-white" />
                 </div>
                 <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
-                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Banner (Fondo del inicio)</span><label className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-blue-100 transition-colors">{isUploading ? 'Subiendo...' : 'Subir Imagen'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'banner_url')} disabled={isUploading}/></label></label>
+                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Banner (Fondo)</span><label className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-blue-100 transition-colors">{isUploading ? 'Subiendo...' : 'Subir Imagen'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'banner_url')} disabled={isUploading}/></label></label>
                   {formData.banner_url ? <div className="rounded-xl overflow-hidden mb-3 border border-gray-200/50 h-32"><img src={formData.banner_url} alt="Banner" className="w-full h-full object-cover" /></div> : <div className="rounded-xl mb-3 border border-gray-200/50 h-32 flex items-center justify-center" style={{ backgroundColor: formData.color_primario }}><span className="text-white font-bold text-xs opacity-70">Usa el color primario (Actual)</span></div>}
                   <input type="text" value={formData.banner_url || ''} onChange={e => setFormData({...formData, banner_url: e.target.value})} placeholder="O pega el link aquí..." className="w-full px-3 py-2 border rounded-lg text-xs text-gray-500 bg-white" />
                 </div>
               </div>
+
+              {/* SECCIÓN DE LOGOS EXTERNOS */}
+              <div className="space-y-6 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-800 uppercase tracking-wider">Miniatura MercadoLibre</span><label className="text-[#2D3277] bg-[#FFE600] px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:opacity-80 transition-opacity">{isMLUploading ? 'Cargando...' : 'Subir Icono'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_mercadolibre')} disabled={isMLUploading}/></label></label>
+                  {formData.logo_mercadolibre && <div className="bg-gray-50 rounded-xl p-2 flex items-center justify-center border border-gray-100 mb-3"><img src={formData.logo_mercadolibre} alt="ML" className="h-10 object-contain drop-shadow-sm" /></div>}
+                  <input type="text" value={formData.logo_mercadolibre || ''} onChange={e => setFormData({...formData, logo_mercadolibre: e.target.value})} placeholder="Enlace del ícono..." className="w-full px-3 py-2 border rounded-lg text-xs text-gray-500 bg-white" />
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <label className="flex justify-between items-end mb-3"><span className="text-[11px] font-bold text-gray-800 uppercase tracking-wider">Miniatura Cashea</span><label className="text-[#000000] bg-[#00FF85] px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:opacity-80 transition-opacity">{isCasheaUploading ? 'Cargando...' : 'Subir Icono'}<input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_cashea')} disabled={isCasheaUploading}/></label></label>
+                  {formData.logo_cashea && <div className="bg-gray-50 rounded-xl p-2 flex items-center justify-center border border-gray-100 mb-3"><img src={formData.logo_cashea} alt="Cashea" className="h-10 object-contain drop-shadow-sm" /></div>}
+                  <input type="text" value={formData.logo_cashea || ''} onChange={e => setFormData({...formData, logo_cashea: e.target.value})} placeholder="Enlace del ícono..." className="w-full px-3 py-2 border rounded-lg text-xs text-gray-500 bg-white" />
+                </div>
+              </div>
             </div>
-            <div className="pt-6 border-t border-gray-100 mt-8"><Button onClick={handleSave} className="w-full md:w-auto" disabled={isUploading || isLogoUploading} style={{ backgroundColor: formData.color_primario }}>Guardar Apariencia</Button></div>
+            <div className="pt-6 border-t border-gray-100 mt-8"><Button onClick={handleSave} className="w-full md:w-auto" disabled={isUploading || isLogoUploading || isMLUploading || isCasheaUploading} style={{ backgroundColor: formData.color_primario }}>Guardar Apariencia</Button></div>
           </div>
         );
       }
 
-      // --- NUEVO Sub-componente: Admin Ajustes ---
+      // --- Sub-componente: Admin Ajustes ---
       function AdminAjustes({ config, showMsg }) {
         const [formData, setFormData] = useState(config);
         useEffect(() => { setFormData(config); }, [config]);
@@ -1201,32 +1239,24 @@
 
         return (
           <div className="space-y-8 animate-in fade-in">
-            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Ajustes del Sistema</h3><p className="text-sm text-gray-500 font-medium">Configura notificaciones, contacto y seguridad</p></div>
+            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Ajustes del Sistema</h3></div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
                   <h4 className="font-black title-font text-gray-800 mb-4 uppercase tracking-widest text-sm flex items-center gap-2">📱 Recepción de Pedidos</h4>
                   <Input label="Número de WhatsApp (con código de país, sin +)" value={formData.whatsapp_numero || ''} onChange={e => setFormData({...formData, whatsapp_numero: e.target.value})} placeholder="Ej: 584141234567" />
-                  
                   <div className="mt-4">
                     <Input label="Correo para Notificaciones (Opcional)" type="email" value={formData.admin_email || ''} onChange={e => setFormData({...formData, admin_email: e.target.value})} placeholder="tu@correo.com" className="mb-2" />
-                    <p className="text-[10px] text-gray-500 leading-relaxed font-bold">
-                      * El primer pedido que recibas te enviará un correo de confirmación de "FormSubmit". 
-                      Debes hacer clic en "Activate" en ese correo para que los siguientes correos lleguen correctamente.
-                    </p>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 mt-6">
-                  <h4 className="font-black title-font text-gray-800 mb-4 uppercase tracking-widest text-sm flex items-center gap-2">💳 Instrucciones de Pago</h4>
-                  <p className="text-[10px] text-gray-500 leading-relaxed font-bold mb-3">Este texto aparecerá en el "Ticket Digital" del cliente cuando finalice su compra.</p>
-                  <textarea 
-                    value={formData.datos_pago || ''} 
-                    onChange={e => setFormData({...formData, datos_pago: e.target.value})} 
-                    placeholder="Ej: Pago Móvil 0414... / Zelle: correo@correo.com"
-                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:outline-none transition-all text-sm h-32 resize-none"
-                  ></textarea>
+                  <h4 className="font-black title-font text-gray-800 mb-4 uppercase tracking-widest text-sm flex items-center gap-2">💳 Métodos de Pago</h4>
+                  <p className="text-[10px] text-gray-500 leading-relaxed font-bold mb-4">Estos datos le aparecerán al cliente al finalizar la compra con botones para copiar fácilmente.</p>
+                  <Input label="Datos de Pago Móvil" value={formData.pago_movil || ''} onChange={e => setFormData({...formData, pago_movil: e.target.value})} placeholder="Ej: Banco - 0414... - Cédula" />
+                  <Input label="Correo / Zelle" value={formData.pago_zelle || ''} onChange={e => setFormData({...formData, pago_zelle: e.target.value})} placeholder="Ej: pagos@kiddiekolors.com" />
+                  <Input label="Billetera USDT / Binance Pay" value={formData.pago_usdt || ''} onChange={e => setFormData({...formData, pago_usdt: e.target.value})} placeholder="Ej: TDY... (TRC20) o PayID" className="mb-0" />
                 </div>
               </div>
 
@@ -1257,19 +1287,42 @@
         };
         const handleDelete = async (id) => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', id)); showMsg('Categoría eliminada'); } catch (e) { showMsg('Error', 'error'); } };
 
+        // NUEVO: MOVER CATEGORÍAS ARRIBA Y ABAJO
+        const moveCategory = async (index, direction) => {
+          if (direction === -1 && index === 0) return;
+          if (direction === 1 && index === categories.length - 1) return;
+          
+          const currentCat = categories[index];
+          const targetCat = categories[index + direction];
+          const tempOrden = currentCat.orden;
+          
+          try {
+            const batch = writeBatch(db);
+            batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', currentCat.id), { orden: targetCat.orden });
+            batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', targetCat.id), { orden: tempOrden });
+            await batch.commit(); 
+            showMsg('Orden actualizado con éxito');
+          } catch (e) { showMsg('Error al reordenar', 'error'); }
+        };
+
         return (
           <div className="animate-in fade-in">
-            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Categorías</h3><p className="text-sm text-gray-500 font-medium">Organiza tus productos por departamentos</p></div>
+            <div className="border-b border-gray-100 pb-4 mb-6"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Categorías</h3></div>
             <div className="flex flex-col md:flex-row gap-4 items-end mb-8 bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
               <div className="flex-grow w-full"><Input label="Nombre de Categoría" value={newCat.nombre} onChange={e=>setNewCat({...newCat, nombre: e.target.value})} className="mb-0"/></div>
-              <div className="w-full md:w-32"><Input label="Orden" type="number" value={newCat.orden} onChange={e=>setNewCat({...newCat, orden: Number(e.target.value)})} className="mb-0"/></div>
+              <div className="w-full md:w-32"><Input label="Orden Inicial" type="number" value={newCat.orden} onChange={e=>setNewCat({...newCat, orden: Number(e.target.value)})} className="mb-0"/></div>
               <Button onClick={handleAdd} className="w-full md:w-auto mt-4 md:mt-0 h-[46px]" style={{ backgroundColor: config.color_primario }}><Plus size={18} className="mr-2"/> Añadir</Button>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-              {categories.length === 0 ? <div className="p-8 text-center text-gray-400 font-medium">Aún no hay categorías registradas.</div> : categories.map(c => (
+              {categories.length === 0 ? <div className="p-8 text-center text-gray-400 font-medium">Aún no hay categorías registradas.</div> : categories.map((c, idx) => (
                 <div key={c.id} className="flex justify-between items-center p-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-4"><div className="bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-gray-500">{c.orden}</div><span className="font-bold text-gray-700 tracking-wide">{c.nombre}</span></div>
-                  <button onClick={() => handleDelete(c.id)} className="text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => moveCategory(idx, -1)} disabled={idx === 0} className="p-2 text-gray-400 hover:text-gray-900 disabled:opacity-20 transition-colors" title="Subir"><ArrowUp size={16}/></button>
+                    <button onClick={() => moveCategory(idx, 1)} disabled={idx === categories.length - 1} className="p-2 text-gray-400 hover:text-gray-900 disabled:opacity-20 transition-colors" title="Bajar"><ArrowDown size={16}/></button>
+                    <div className="w-px h-6 bg-gray-200 mx-2"></div>
+                    <button onClick={() => handleDelete(c.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors" title="Eliminar"><Trash2 size={16}/></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1279,15 +1332,16 @@
 
       // --- Sub-componente: Admin Productos ---
       function AdminProducts({ products, categories, showMsg, config }) {
-        const defaultProduct = { nombre: '', precio_mayor: 0, compra_minima_unidad: 1, categoria_id: '', disponible: true, fotos: ['', ''] };
+        // ACTUALIZADO: categorias_ids ES UN ARRAY PARA SOPORTAR MÚLTIPLES CATEGORÍAS
+        const defaultProduct = { nombre: '', sku: '', precio_mayor: 0, compra_minima_unidad: 1, categoria_id: '', categorias_ids: [], disponible: true, fotos: ['', ''], link_mercadolibre: '', link_cashea: '' };
         const [editing, setEditing] = useState(null);
         const [formData, setFormData] = useState(defaultProduct);
         const [isUploading, setIsUploading] = useState(false);
         const [productToDelete, setProductToDelete] = useState(null);
 
-        // NUEVOS ESTADOS PARA ACTUALIZACIÓN MASIVA DE PRECIOS
+        // ESTADOS PARA ACTUALIZACIÓN MASIVA DE PRECIOS
         const [showPriceModal, setShowPriceModal] = useState(false);
-        const [priceConfig, setPriceConfig] = useState({ action: 'increase', percent: 0, onlyActive: true });
+        const [priceConfig, setPriceConfig] = useState({ action: 'increase', percent: 0, onlyActive: true, categoryId: 'all' });
         const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
 
         const handleSave = async () => {
@@ -1306,36 +1360,34 @@
           catch (e) { showMsg('Error al eliminar', 'error'); } finally { setProductToDelete(null); }
         };
 
-        // NUEVA FUNCIÓN: ACTUALIZAR PRECIOS EN LOTE
         const handleBatchPriceUpdate = async () => {
           if (priceConfig.percent <= 0) return showMsg('El porcentaje debe ser mayor a 0', 'error');
-
           setIsUpdatingPrices(true);
           try {
-            let batchCount = 0; 
-            let batch = writeBatch(db);
+            let batchCount = 0; let batch = writeBatch(db);
             const factor = priceConfig.action === 'increase' ? (1 + (priceConfig.percent / 100)) : (1 - (priceConfig.percent / 100));
-            const toUpdate = priceConfig.onlyActive ? products.filter(p => p.disponible) : products;
+            
+            // APLICAR FILTROS (Activos y por Múltiples Categorías)
+            const toUpdate = products.filter(p => {
+              const matchesActive = priceConfig.onlyActive ? p.disponible : true;
+              const catArray = p.categorias_ids?.length > 0 ? p.categorias_ids : (p.categoria_id ? [p.categoria_id] : []);
+              const matchesCat = priceConfig.categoryId === 'all' ? true : catArray.includes(priceConfig.categoryId);
+              return matchesActive && matchesCat;
+            });
+
+            if (toUpdate.length === 0) { setIsUpdatingPrices(false); return showMsg('No hay productos que coincidan con estos filtros.', 'error'); }
 
             for (const p of toUpdate) {
               const newPrice = Number((p.precio_mayor * factor).toFixed(2));
               batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'productos', p.id), { precio_mayor: newPrice });
               batchCount++;
-              
-              // Evitar error de límite de 500 escrituras en Firebase
               if (batchCount === 490) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
             }
             if (batchCount > 0) await batch.commit();
             
             showMsg(`Se actualizaron los precios de ${toUpdate.length} productos exitosamente.`);
             setShowPriceModal(false);
-            setPriceConfig({ action: 'increase', percent: 0, onlyActive: true });
-          } catch (e) {
-            showMsg('Error actualizando precios', 'error');
-            console.error(e);
-          } finally {
-            setIsUpdatingPrices(false);
-          }
+          } catch (e) { showMsg('Error actualizando precios', 'error'); } finally { setIsUpdatingPrices(false); }
         };
 
         if (editing) {
@@ -1350,19 +1402,43 @@
                 <div className="space-y-2">
                   <Input label="Nombre del Producto" value={formData.nombre} onChange={e=>setFormData({...formData, nombre: e.target.value})} />
                   <div className="flex gap-4">
+                    <div className="flex-1"><Input label="SKU / ITEM Nº (Opcional)" value={formData.sku || ''} onChange={e=>setFormData({...formData, sku: e.target.value})} /></div>
+                  </div>
+                  <div className="flex gap-4">
                     <div className="flex-1"><Input label="Precio ($)" type="number" min="0" value={formData.precio_mayor} onChange={e=>setFormData({...formData, precio_mayor: Number(e.target.value)})} /></div>
                     <div className="flex-1"><Input label="Compra Min (Unids)" type="number" min="1" value={formData.compra_minima_unidad} onChange={e=>setFormData({...formData, compra_minima_unidad: Number(e.target.value)})} /></div>
                   </div>
+                  
+                  {/* NUEVO: SELECCIÓN DE MÚLTIPLES CATEGORÍAS CON CHECKBOXES */}
                   <div className="mb-6">
-                    <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Categoría</label>
-                    <select value={formData.categoria_id} onChange={e=>setFormData({...formData, categoria_id: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:outline-none transition-all text-sm font-semibold">
-                      <option value="">Seleccionar...</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Categorías (Puedes elegir varias)</label>
+                    <div className="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-xl border border-gray-200 max-h-48 overflow-y-auto">
+                      {categories.map(c => {
+                        const isChecked = formData.categorias_ids?.includes(c.id) || (!formData.categorias_ids?.length && formData.categoria_id === c.id);
+                        return (
+                          <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer p-1 hover:bg-gray-100 rounded">
+                            <input type="checkbox" checked={isChecked} onChange={(e) => {
+                              const currentIds = formData.categorias_ids?.length > 0 ? formData.categorias_ids : (formData.categoria_id ? [formData.categoria_id] : []);
+                              const newIds = e.target.checked ? [...currentIds, c.id] : currentIds.filter(id => id !== c.id);
+                              setFormData({...formData, categorias_ids: newIds, categoria_id: newIds[0] || ''});
+                            }} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <span className="truncate">{c.nombre}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
+
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3 mb-6">
                     <input type="checkbox" id="disp" checked={formData.disponible} onChange={e=>setFormData({...formData, disponible: e.target.checked})} className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500" />
                     <label htmlFor="disp" className="font-bold text-sm text-gray-800 uppercase tracking-wide cursor-pointer">Activo en Tienda</label>
+                  </div>
+
+                  {/* NUEVOS CAMPOS: LINKS DE COMPRA EXTERNA */}
+                  <div className="p-5 border border-dashed border-gray-200 rounded-2xl bg-white">
+                    <h4 className="font-black text-xs uppercase tracking-widest text-gray-800 mb-4">🔗 Enlaces de Compra Externa</h4>
+                    <Input label="Link MercadoLibre (Dejar vacío si no aplica)" value={formData.link_mercadolibre || ''} onChange={e=>setFormData({...formData, link_mercadolibre: e.target.value})} placeholder="https://articulo.mercadolibre.com.ve/..." />
+                    <Input label="Link Cashea (Dejar vacío si no aplica)" value={formData.link_cashea || ''} onChange={e=>setFormData({...formData, link_cashea: e.target.value})} placeholder="https://app.cashea.com/..." className="mb-0" />
                   </div>
                 </div>
 
@@ -1436,9 +1512,18 @@
                       </div>
                     </div>
 
+                    {/* FILTRO POR CATEGORÍA EN AJUSTE MASIVO */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Aplicar a Categoría</label>
+                      <select value={priceConfig.categoryId} onChange={e=>setPriceConfig({...priceConfig, categoryId: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:outline-none transition-all text-sm font-semibold">
+                        <option value="all">Todas las Categorías</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                    </div>
+
                     <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-3">
                       <input type="checkbox" id="onlyAct" checked={priceConfig.onlyActive} onChange={e=>setPriceConfig({...priceConfig, onlyActive: e.target.checked})} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                      <label htmlFor="onlyAct" className="font-bold text-sm text-gray-800 cursor-pointer">Afectar solo a productos activos</label>
+                      <label htmlFor="onlyAct" className="font-bold text-sm text-gray-800 cursor-pointer">Ignorar productos inactivos/agotados</label>
                     </div>
                     
                     <div className="text-[11px] text-gray-500 bg-blue-50 p-3 rounded-xl border border-blue-100 font-medium leading-relaxed">
@@ -1478,7 +1563,11 @@
                         <td className="p-4"><div className="w-12 h-12 bg-white rounded-xl border border-gray-100 flex items-center justify-center p-1 shadow-sm"><img src={p.fotos?.[0] || ''} alt="" className="w-full h-full object-contain" /></div></td>
                         <td className="p-4">
                           <div className="font-bold text-gray-800 text-sm mb-1">{p.nombre} {!p.disponible && <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 ml-2 rounded-md font-black uppercase tracking-wider">Inactivo</span>}</div>
-                          <div className="flex gap-4 text-xs"><span className="font-black text-gray-900">${Number(p.precio_mayor).toFixed(2)}</span><span className="text-gray-400 font-semibold uppercase">Mín: {p.compra_minima_unidad}</span></div>
+                          <div className="flex gap-4 text-xs">
+                            <span className="font-black text-gray-900">${Number(p.precio_mayor).toFixed(2)}</span>
+                            <span className="text-gray-400 font-semibold uppercase">Mín: {p.compra_minima_unidad}</span>
+                            {p.sku && <span className="text-gray-400 font-semibold uppercase hidden sm:inline">SKU: {p.sku}</span>}
+                          </div>
                         </td>
                         <td className="p-4 text-center">
                           <div className="flex justify-center gap-2">
@@ -1500,13 +1589,13 @@
       function AdminRespaldo({ config, categories, products, showMsg }) {
         const [isUploading, setIsUploading] = useState(false);
         const [pendingJSONFile, setPendingJSONFile] = useState(null); 
-        const [isPrintingCatalog, setIsPrintingCatalog] = useState(false); // NUEVO ESTADO PARA PDF
+        const [isPrintingCatalog, setIsPrintingCatalog] = useState(false);
 
         const exportFullJSON = () => {
           const backupData = { type: 'b2b-catalog-full-backup', timestamp: new Date().toISOString(), config: config, categories: categories, products: products };
           const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
           const dl = document.createElement('a'); dl.setAttribute("href", dataStr); dl.setAttribute("download", `b2b_backup_total_${new Date().toISOString().split('T')[0]}.json`); dl.click();
-          showMsg('Copia de seguridad del sistema completo descargada.');
+          showMsg('Copia de seguridad descargada.');
         };
 
         const handleJSONSelect = (e) => {
@@ -1517,7 +1606,6 @@
         const executeImportFullJSON = () => {
           if (!pendingJSONFile) return;
           const file = pendingJSONFile; setPendingJSONFile(null); 
-          
           const reader = new FileReader();
           reader.onload = async (event) => {
             try {
@@ -1532,13 +1620,10 @@
                   const ref = id ? doc(db, 'artifacts', appId, 'public', 'data', 'productos', id) : doc(collection(db, 'artifacts', appId, 'public', 'data', 'productos'));
                   batch.set(ref, prodData); batchCount++; if (batchCount > 490) await commitBatch();
                 }
-                if (batchCount > 0) await commitBatch(); showMsg('¡Restauración exitosa! Se cargaron los productos.'); return;
+                if (batchCount > 0) await commitBatch(); showMsg('¡Restauración exitosa!'); return;
               }
 
-              if (data.type !== 'b2b-catalog-full-backup' && !data.config) throw new Error("El archivo no es válido.");
-
               if (data.config) { batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'main'), data.config, { merge: true }); batchCount++; }
-              
               if (data.categories && Array.isArray(data.categories)) {
                 for (const cat of data.categories) {
                   const { id, ...catData } = cat;
@@ -1546,7 +1631,6 @@
                   batch.set(ref, catData); batchCount++; if (batchCount > 490) await commitBatch();
                 }
               }
-
               if (data.products && Array.isArray(data.products)) {
                 for (const prod of data.products) {
                   const { id, ...prodData } = prod;
@@ -1554,19 +1638,18 @@
                   batch.set(ref, prodData); batchCount++; if (batchCount > 490) await commitBatch();
                 }
               }
-
-              if (batchCount > 0) await commitBatch(); showMsg('¡Restauración exitosa! La tienda ha cargado el respaldo.');
-            } catch (err) { showMsg('Error al restaurar JSON. Archivo inválido o corrupto.', 'error'); } finally { setIsUploading(false); }
+              if (batchCount > 0) await commitBatch(); showMsg('¡Restauración exitosa!');
+            } catch (err) { showMsg('Error al restaurar JSON.', 'error'); } finally { setIsUploading(false); }
           };
           reader.readAsText(file);
         };
 
         const exportToCSV = () => {
-          const headers = ['nombre', 'precio_mayor', 'compra_minima_unidad', 'categoria_id', 'disponible', 'foto1'];
+          const headers = ['nombre', 'sku', 'precio_mayor', 'compra_minima_unidad', 'categoria_id', 'disponible', 'foto1'];
           let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\r\n";
-          products.forEach(p => { csvContent += [`"${p.nombre.replace(/"/g, '""')}"`, p.precio_mayor, p.compra_minima_unidad, p.categoria_id, p.disponible, p.fotos?.[0] ? `"${p.fotos[0]}"` : ''].join(",") + "\r\n"; });
+          products.forEach(p => { csvContent += [`"${p.nombre.replace(/"/g, '""')}"`, `"${p.sku || ''}"`, p.precio_mayor, p.compra_minima_unidad, p.categoria_id, p.disponible, p.fotos?.[0] ? `"${p.fotos[0]}"` : ''].join(",") + "\r\n"; });
           const dl = document.createElement('a'); dl.setAttribute("href", encodeURI(csvContent)); dl.setAttribute("download", `productos_plantilla_${new Date().getTime()}.csv`); dl.click();
-          showMsg('Catálogo exportado en CSV/Excel exitosamente');
+          showMsg('Catálogo exportado exitosamente');
         };
 
         const importCSV = (e) => {
@@ -1577,74 +1660,62 @@
               setIsUploading(true);
               const rows = event.target.result.split('\n').filter(r => r.trim() !== '');
               let batchCount = 0; let batch = writeBatch(db);
-              
               for (let i = 1; i < rows.length; i++) {
                 const values = rows[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, '').trim());
                 if(values.length < 2) continue;
                 batch.set(doc(collection(db, 'artifacts', appId, 'public', 'data', 'productos')), {
-                  nombre: values[0] || 'Sin nombre', precio_mayor: Number(values[1]) || 0, compra_minima_unidad: Number(values[2]) || 1,
-                  categoria_id: values[3] || '', disponible: values[4] === 'true' || values[4] === '1', fotos: values[5] ? [values[5]] : []
+                  nombre: values[0] || 'Sin nombre', sku: values[1] || '', precio_mayor: Number(values[2]) || 0, compra_minima_unidad: Number(values[3]) || 1,
+                  categoria_id: values[4] || '', disponible: values[5] === 'true' || values[5] === '1', fotos: values[6] ? [values[6]] : []
                 });
                 batchCount++; if (batchCount === 490) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
               }
-              if (batchCount > 0) await commitBatch(); showMsg(`Se importaron ${batchCount} productos exitosamente.`);
-            } catch (err) { showMsg('Error importando CSV. Verifica el formato.', 'error'); } finally { setIsUploading(false); e.target.value = ''; }
+              if (batchCount > 0) await commitBatch(); showMsg(`Se importaron productos exitosamente.`);
+            } catch (err) { showMsg('Error importando CSV.', 'error'); } finally { setIsUploading(false); e.target.value = ''; }
           };
           reader.readAsText(file);
         };
 
-        // NUEVA FUNCIÓN: GENERAR VISTA DE PDF Y LLAMAR A GUARDAR
         const printCatalog = () => {
           setIsPrintingCatalog(true);
-          // Le damos medio segundo al navegador para que dibuje las imágenes antes de capturarlo
-          setTimeout(() => {
-            window.print();
-            setIsPrintingCatalog(false);
-          }, 500);
+          setTimeout(() => { window.print(); setIsPrintingCatalog(false); }, 500);
         };
 
         return (
           <div className="animate-in fade-in">
-            <ConfirmModal isOpen={!!pendingJSONFile} title="⚠️ ADVERTENCIA" message="Esta acción sobreescribirá la apariencia, categorías y productos actuales. ¿Estás seguro de querer restaurar esta copia?" onConfirm={executeImportFullJSON} onCancel={() => setPendingJSONFile(null)} confirmText="Sí, Restaurar" />
-            <div className="border-b border-gray-100 pb-4 mb-8"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Respaldo y Datos</h3><p className="text-sm text-gray-500 font-medium">Protege la información de tu tienda o gestiona grandes cantidades de productos.</p></div>
+            <ConfirmModal isOpen={!!pendingJSONFile} title="⚠️ ADVERTENCIA" message="Esta acción sobreescribirá la apariencia, categorías y productos actuales. ¿Estás seguro?" onConfirm={executeImportFullJSON} onCancel={() => setPendingJSONFile(null)} confirmText="Sí, Restaurar" />
+            <div className="border-b border-gray-100 pb-4 mb-8"><h3 className="text-2xl font-black uppercase title-font tracking-wide">Respaldo y Datos</h3></div>
 
-            <h4 className="font-black text-gray-800 uppercase tracking-widest text-xs mb-4">Copia de Seguridad del Sistema (Recomendado)</h4>
+            <h4 className="font-black text-gray-800 uppercase tracking-widest text-xs mb-4">Copia de Seguridad del Sistema</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 shadow-lg flex flex-col justify-between text-white group relative overflow-hidden">
+              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 shadow-lg flex flex-col justify-between text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                <div><div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md"><Download size={24} className="text-white" /></div><h4 className="font-black text-lg title-font mb-1">Exportar JSON</h4><p className="text-sm text-gray-300 mb-6">Descarga un archivo completo con la apariencia, categorías y todos tus productos.</p></div>
+                <div><div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4"><Download size={24}/></div><h4 className="font-black text-lg title-font mb-1">Exportar JSON</h4><p className="text-sm text-gray-300 mb-6">Descarga un archivo completo con la apariencia, categorías y todos tus productos.</p></div>
                 <button onClick={exportFullJSON} className="w-full py-3 bg-white text-gray-900 font-bold title-font rounded-xl hover:bg-gray-100 transition-colors shadow-md">Descargar Respaldo</button>
               </div>
               <div className="bg-white border-2 border-dashed border-gray-200 rounded-3xl p-6 flex flex-col justify-between hover:bg-gray-50 transition-colors">
-                <div><div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4"><Upload size={24} className="text-blue-600" /></div><h4 className="font-black text-lg title-font mb-1 text-gray-800">Restaurar JSON</h4><p className="text-sm text-gray-500 mb-6">Sube un archivo de respaldo JSON previo. <strong className="text-red-500">Sobreescribirá tu tienda actual.</strong></p></div>
+                <div><div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4"><Upload size={24} className="text-blue-600" /></div><h4 className="font-black text-lg title-font mb-1 text-gray-800">Restaurar JSON</h4><p className="text-sm text-gray-500 mb-6">Sube un archivo de respaldo JSON previo. <strong className="text-red-500">Sobreescribirá tu tienda.</strong></p></div>
                 <input type="file" id="import-json" accept=".json" className="hidden" onChange={handleJSONSelect} disabled={isUploading}/>
                 <label htmlFor="import-json" className={`w-full py-3 bg-blue-600 text-white font-bold title-font rounded-xl cursor-pointer hover:bg-blue-700 transition-colors shadow-md text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>{isUploading ? 'RESTAURANDO...' : 'SUBIR ARCHIVO JSON'}</label>
               </div>
             </div>
 
             <div className="w-full h-px bg-gray-100 my-8"></div>
-
             <h4 className="font-black text-gray-800 uppercase tracking-widest text-xs mb-4">Catálogo Visual y Datos Masivos</h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
-              {/* NUEVA TARJETA: DESCARGAR CATÁLOGO PDF */}
               <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-red-300 transition-colors group cursor-pointer text-center" onClick={printCatalog}>
                 <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><FileText size={28} /></div>
                 <div><h4 className="font-black text-base title-font text-gray-800">Catálogo PDF</h4><p className="text-xs text-gray-500 mt-1">Genera un PDF visual para clientes sin acceso a internet.</p></div>
               </div>
-
               <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-green-300 transition-colors group cursor-pointer text-center" onClick={exportToCSV}>
                 <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><FileSpreadsheet size={28} /></div>
                 <div><h4 className="font-black text-base title-font text-gray-800">Exportar a CSV</h4><p className="text-xs text-gray-500 mt-1">Baja solo tus productos para editarlos masivamente en Excel.</p></div>
               </div>
-
               <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-sm flex flex-col items-center gap-4 hover:border-blue-300 transition-colors group text-center">
                 <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><Upload size={28} /></div>
                 <div className="flex-grow w-full"><h4 className="font-black text-base title-font text-gray-800">Importar CSV</h4><p className="text-xs text-gray-500 mt-1 mb-3">Carga cientos de productos a la vez.</p><input type="file" id="import-csv" accept=".csv" className="hidden" onChange={importCSV} disabled={isUploading}/><label htmlFor="import-csv" className={`w-full block text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors ${isUploading ? 'opacity-50' : ''}`}>SELECCIONAR CSV</label></div>
               </div>
             </div>
 
-            {/* DOM OCULTO: PLANTILLA DE DISEÑO PARA EL PDF DEL CATÁLOGO COMPLETO */}
             {isPrintingCatalog && (
               <div className="printable-section bg-white text-black p-8 min-h-screen z-[9999]">
                 <div className="text-center mb-10 border-b-2 border-gray-100 pb-8">
@@ -1652,24 +1723,16 @@
                   <h1 className="text-3xl font-black uppercase title-font">{config.mensaje_bienvenida}</h1>
                   <p className="text-gray-500 font-bold mt-2">WhatsApp: +{config.whatsapp_numero.replace(/\D/g, '')}</p>
                 </div>
-                
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                   {products.filter(p => p.disponible).map(p => (
                     <div key={p.id} className="border border-gray-100 p-4 rounded-2xl flex flex-col items-center text-center" style={{ breakInside: 'avoid' }}>
-                      {p.fotos?.[0] ? (
-                        <img src={p.fotos[0]} className="w-32 h-32 object-contain mb-3 mix-blend-multiply" />
-                      ) : (
-                        <div className="w-32 h-32 bg-gray-50 flex items-center justify-center mb-3 rounded-xl"><ImageIcon className="text-gray-300" /></div>
-                      )}
+                      {p.fotos?.[0] ? (<img src={p.fotos[0]} className="w-32 h-32 object-contain mb-3 mix-blend-multiply" />) : (<div className="w-32 h-32 bg-gray-50 flex items-center justify-center mb-3 rounded-xl"><ImageIcon className="text-gray-300" /></div>)}
                       <h3 className="font-bold text-sm mb-1 leading-tight text-gray-800">{p.nombre}</h3>
-                      <p className="text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-wider">Mínimo: {p.compra_minima_unidad} u.</p>
+                      <p className="text-[10px] text-gray-500 mb-1 uppercase font-bold tracking-wider">Mín: {p.compra_minima_unidad} u.</p>
+                      {p.sku && <p className="text-[9px] text-gray-400 mb-2 uppercase font-bold tracking-widest">SKU: {p.sku}</p>}
                       <div className="font-black text-xl title-font" style={{ color: config.color_primario }}>${Number(p.precio_mayor).toFixed(2)}</div>
                     </div>
                   ))}
-                </div>
-                
-                <div className="mt-12 text-center text-xs text-gray-400 font-bold uppercase tracking-widest border-t border-gray-100 pt-6">
-                  Catálogo generado automáticamente el {new Date().toLocaleDateString()}
                 </div>
               </div>
             )}
@@ -1677,7 +1740,6 @@
         );
       }
 
-      // INICIA LA APLICACIÓN
       const root = createRoot(document.getElementById('root'));
       root.render(<App />);
     </script>
